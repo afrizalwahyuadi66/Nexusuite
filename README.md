@@ -1,6 +1,3 @@
-# Nexusuite
-Next-Gen Autonomous Pentesting Suite. Scan targets with Nmap/Nuclei, and let the Local AI Agent analyze the logs to hunt for zero-days, search real-time exploits, and build weaponized payloads automatically.
-
 <h1 align="center">
   🛡️ Nexusuite v3.3.0 (AI Edition)
 </h1>
@@ -18,6 +15,9 @@ Next-Gen Autonomous Pentesting Suite. Scan targets with Nmap/Nuclei, and let the
 </p>
 
 ---
+
+# Nexusuite
+Next-Gen Autonomous Pentesting Suite. Scan targets with Nmap/Nuclei, and let the Local AI Agent analyze the logs to hunt for zero-days, search real-time exploits, and build weaponized payloads automatically.
 
 ## 📖 Tentang Tools Ini
 **Nexusuite** adalah skrip automasi penetrasi keamanan berbasis antarmuka teks (TUI) yang menggabungkan alat-alat standar industri (Nmap, Nuclei, Ffuf, Sqlmap, Nikto) ke dalam satu alur kerja yang terstruktur dan mudah digunakan.
