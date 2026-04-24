@@ -1,0 +1,77 @@
+# ==========================================
+# Nexusuite - Workflow Configuration
+# ==========================================
+name: "Autonomous AI Pentesting Workflow"
+version: "3.3.0"
+author: "Nexusuite Team"
+
+# --- 1. Target Configuration ---
+target_settings:
+  input_type: "file or single target"
+  default_timeout_per_target: "30m"
+  proxy_support: true
+
+# --- 2. Scanning Workflow (Bash TUI) ---
+phases:
+  reconnaissance:
+    enabled: true
+    tools:
+      - name: "subfinder"
+        purpose: "Subdomain Enumeration"
+      - name: "httpx"
+        purpose: "Alive Host Detection"
+      - name: "gau"
+        purpose: "URL Harvesting"
+      - name: "nmap"
+        purpose: "Port Scanning & Service Fingerprinting"
+        
+  vulnerability_scanning:
+    enabled: true
+    tools:
+      - name: "nuclei"
+        purpose: "Template-based CVE Scanning"
+      - name: "sqlmap"
+        purpose: "SQL Injection Detection"
+      - name: "nikto"
+        purpose: "Web Server Flaw Detection"
+      - name: "ffuf"
+        purpose: "Directory Bruteforcing"
+
+# --- 3. AI Agent Workflow (Python) ---
+ai_agent:
+  enabled_by_default: false  # User is prompted at runtime
+  engine: "Ollama Local LLM"
+  recommended_models:
+    - "qwen2.5:0.5b"
+    - "llama3.2"
+  
+  tasks:
+    - step: 1
+      action: "Read Logs"
+      source: "nmap_full_{target}.txt & nuclei_results.txt"
+    
+    - step: 2
+      action: "Analyze for Vulnerabilities"
+      condition: "If CVE or Critical Bug is found"
+      
+    - step: 3
+      action: "Local Exploit Search"
+      tool: "searchsploit"
+      fallback: "exploit_db_real.json (Local Database)"
+      
+    - step: 4
+      action: "Real-time Internet Search"
+      tool: "duckduckgo-search"
+      query_format: "{cve_id} exploit github poc"
+      
+    - step: 5
+      action: "Generate Payload"
+      output: "Terminal / $TARGET_LOG"
+      format: "curl command or msfconsole resource script"
+
+# --- 4. Reporting Workflow ---
+reporting:
+  formats:
+    - "txt" (Raw Logs)
+    - "html" (Interactive Dashboard)
+  auto_open: false
