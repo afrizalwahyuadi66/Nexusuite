@@ -146,6 +146,16 @@ Additional CLI modes:
 ./nexusuite.sh --help
 ```
 
+CLI mode details:
+- `./nexusuite.sh --doctor`
+  Runs a human-readable environment health check. Verifies required tools, Python module availability, and AI endpoint/model readiness (Ollama), then prints an operator-friendly status summary.
+- `./nexusuite.sh --doctor-json`
+  Runs the same health checks as `--doctor`, but outputs structured JSON for automation, CI/CD pipelines, or external monitoring/integration scripts.
+- `./nexusuite.sh --dry-run`
+  Simulates the full workflow without executing actual scan commands. Useful for validating configuration, module selection, target loading, and report flow safely before a real scan.
+- `./nexusuite.sh --help`
+  Displays command usage, available flags, and quick CLI references.
+
 ---
 
 ## Output Structure
