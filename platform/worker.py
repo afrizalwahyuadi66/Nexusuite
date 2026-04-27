@@ -55,10 +55,20 @@ def recompute_scan_status(scan_id: int) -> None:
     if "running" in statuses or "pending" in statuses:
         update_scan_status(scan_id, "running")
         return
-    if "awaiting_approval" in statuses and "failed" not in statuses and "blocked" not in statuses:
+    if (
+        "awaiting_approval" in statuses
+        and "failed" not in statuses
+        and "blocked" not in statuses
+        and "rejected" not in statuses
+    ):
         update_scan_status(scan_id, "awaiting_approval")
         return
-    if "failed" in statuses or "blocked" in statuses or "awaiting_approval" in statuses:
+    if (
+        "failed" in statuses
+        or "blocked" in statuses
+        or "awaiting_approval" in statuses
+        or "rejected" in statuses
+    ):
         update_scan_status(scan_id, "partial_failed_or_blocked")
         return
     update_scan_status(scan_id, "completed")

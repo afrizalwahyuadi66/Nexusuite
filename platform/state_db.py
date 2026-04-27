@@ -199,7 +199,7 @@ def replay_failed_jobs(scan_id: int) -> int:
             """
             UPDATE jobs
             SET status='pending', exit_code=NULL, started_at=NULL, ended_at=NULL, updated_at=?
-            WHERE scan_id=? AND status IN ('failed', 'blocked', 'awaiting_approval')
+            WHERE scan_id=? AND status IN ('failed', 'blocked', 'awaiting_approval', 'rejected')
             """,
             (now, scan_id),
         )
@@ -226,7 +226,7 @@ def approve_job(job_id: int) -> dict[str, Any] | None:
         row = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         if not row:
             return None
-        if row["status"] not in {"awaiting_approval", "blocked"}:
+        if row["status"] not in {"awaiting_approval", "blocked", "rejected"}:
             return dict(row)
         conn.execute(
             """
@@ -235,6 +235,27 @@ def approve_job(job_id: int) -> dict[str, Any] | None:
             WHERE id=?
             """,
             (now, job_id),
+        )
+        updated = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        return dict(updated) if updated else None
+
+
+def reject_job(job_id: int, reason: str = "") -> dict[str, Any] | None:
+    now = utcnow()
+    with _LOCK, get_conn() as conn:
+        row = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not row:
+            return None
+        if row["status"] not in {"awaiting_approval", "pending", "blocked"}:
+            return dict(row)
+        suffix = f" # rejected_reason={reason}" if reason else " # rejected_reason=unspecified"
+        conn.execute(
+            """
+            UPDATE jobs
+            SET status='rejected', command=command || ?, updated_at=?
+            WHERE id=?
+            """,
+            (suffix, now, job_id),
         )
         updated = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         return dict(updated) if updated else None

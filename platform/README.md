@@ -32,6 +32,8 @@ Buka:
 - `POST /api/scans`
 - `POST /api/scans/<id>/replay`
 - `POST /api/jobs/<id>/approve`
+- `POST /api/jobs/<id>/reject`
+- `POST /api/approvals/bulk`
 - `POST /api/ai/explain`
 
 Payload `POST /api/scans`:
@@ -62,6 +64,10 @@ Worker membaca approval mode dari `config/risk_policy.yaml`:
 Jika tier medium/high belum diizinkan, job akan masuk status `awaiting_approval` dan bisa di-approve dari:
 - UI `Approval Center`
 - API `POST /api/jobs/<id>/approve`
+- API `POST /api/jobs/<id>/reject` (dengan reason)
+- API `POST /api/approvals/bulk` untuk aksi massal `approve|reject`
+- UI mendukung search/filter approvals, select all visible, dan select by `scan_id`
+- UI mendukung preset cepat: `Only High-Risk`, `Medium+`, `Only Nuclei`, dan `Scan Filter Aktif`
 
 Opsional via env (auto-approve):
 - `NEXUS_PLATFORM_APPROVE_MEDIUM=true`

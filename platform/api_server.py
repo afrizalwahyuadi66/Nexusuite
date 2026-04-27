@@ -21,6 +21,7 @@ try:
         list_jobs,
         list_scans,
         list_timeline_events,
+        reject_job,
         replay_failed_jobs,
         update_scan_status,
     )
@@ -40,6 +41,7 @@ except ImportError:
         list_jobs,
         list_scans,
         list_timeline_events,
+        reject_job,
         replay_failed_jobs,
         update_scan_status,
     )
@@ -232,6 +234,91 @@ class ApiHandler(BaseHTTPRequestHandler):
                 detail=f"from_status={before['status']}; to_status={updated['status']}",
             )
             _json(self, 200, {"job": updated})
+            return
+
+        # /api/jobs/<id>/reject
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "jobs" and parts[3] == "reject":
+            job_id_raw = parts[2]
+            if not job_id_raw.isdigit():
+                _json(self, 400, {"error": "invalid job id"})
+                return
+            try:
+                body = _read_json(self)
+            except Exception:
+                body = {}
+            reason = str(body.get("reason", "")).strip()
+            job_id = int(job_id_raw)
+            before = get_job(job_id)
+            if not before:
+                _json(self, 404, {"error": "job not found"})
+                return
+            updated = reject_job(job_id, reason=reason)
+            if not updated:
+                _json(self, 404, {"error": "job not found"})
+                return
+            scan_id = int(updated["scan_id"])
+            append_timeline_event(
+                scan_id=scan_id,
+                job_id=job_id,
+                event="approval",
+                status="rejected",
+                detail=f"from_status={before['status']}; reason={reason or 'unspecified'}",
+            )
+            _json(self, 200, {"job": updated})
+            return
+
+        # /api/approvals/bulk
+        if len(parts) == 3 and parts[0] == "api" and parts[1] == "approvals" and parts[2] == "bulk":
+            try:
+                body = _read_json(self)
+            except Exception:
+                _json(self, 400, {"error": "invalid json"})
+                return
+            action = str(body.get("action", "")).strip().lower()
+            ids_raw = body.get("job_ids") or []
+            reason = str(body.get("reason", "")).strip()
+            if action not in {"approve", "reject"}:
+                _json(self, 400, {"error": "action must be approve|reject"})
+                return
+
+            if isinstance(ids_raw, list) and ids_raw:
+                job_ids = [int(x) for x in ids_raw if str(x).isdigit()]
+            else:
+                job_ids = [int(j["id"]) for j in list_approval_jobs(limit=2000)]
+
+            affected = 0
+            for job_id in job_ids:
+                before = get_job(job_id)
+                if not before:
+                    continue
+                if action == "approve":
+                    updated = approve_job(job_id)
+                    if not updated:
+                        continue
+                    scan_id = int(updated["scan_id"])
+                    update_scan_status(scan_id, "running")
+                    append_timeline_event(
+                        scan_id=scan_id,
+                        job_id=job_id,
+                        event="approval",
+                        status="manually_approved_bulk",
+                        detail=f"from_status={before['status']}; to_status={updated['status']}",
+                    )
+                    affected += 1
+                else:
+                    updated = reject_job(job_id, reason=reason)
+                    if not updated:
+                        continue
+                    scan_id = int(updated["scan_id"])
+                    append_timeline_event(
+                        scan_id=scan_id,
+                        job_id=job_id,
+                        event="approval",
+                        status="rejected_bulk",
+                        detail=f"from_status={before['status']}; reason={reason or 'unspecified'}",
+                    )
+                    affected += 1
+            _json(self, 200, {"action": action, "affected": affected, "job_ids": job_ids})
             return
 
         _json(self, 404, {"error": "not found"})

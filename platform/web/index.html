@@ -34,7 +34,7 @@
   <div class="row">
     <div class="card col">
       <h3>Scans</h3>
-      <table id="scansTbl"><thead><tr><th>ID</th><th>Target</th><th>Status</th><th>Updated</th></tr></thead><tbody></tbody></table>
+      <table id="scansTbl"><thead><tr><th>ID</th><th>Target</th><th>Status</th><th>Updated</th><th>Action</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="card col">
       <h3>Findings</h3>
@@ -44,8 +44,28 @@
 
   <div class="card">
     <h3>Approval Center</h3>
+    <label>Preset</label><br>
+    <button onclick="setApprovalPreset('all')">All</button>
+    <button onclick="setApprovalPreset('high')">Only High-Risk</button>
+    <button onclick="setApprovalPreset('medium_plus')">Medium+</button>
+    <button onclick="setApprovalPreset('nuclei')">Only Nuclei</button>
+    <button onclick="setApprovalPreset('scan_active')">Scan Filter Aktif</button>
+    <br>
+    <label>Search (job/plugin/status)</label><br>
+    <input id="approvalSearch" placeholder="contoh: nuclei atau awaiting" style="width:320px" oninput="renderApprovalsTable()"><br>
+    <label>Filter Scan ID</label><br>
+    <input id="approvalScanIdFilter" placeholder="contoh: 12" style="width:160px" oninput="renderApprovalsTable()"><br>
+    <label>Reason (untuk reject)</label><br>
+    <input id="approvalReason" placeholder="contoh: out of scope" style="width:320px"><br>
+    <button onclick="selectAllVisibleApprovals()">Select All Visible</button>
+    <button onclick="selectByScanId()">Select by Scan ID</button>
+    <button onclick="clearApprovalSelection()">Clear Selection</button>
+    <br>
+    <button onclick="bulkApprove()">Bulk Approve Selected</button>
+    <button onclick="bulkReject()">Bulk Reject Selected</button>
+    <button onclick="bulkApprove(true)">Bulk Approve All Pending</button>
     <table id="approvalTbl">
-      <thead><tr><th>Job ID</th><th>Scan</th><th>Plugin</th><th>Status</th><th>Action</th></tr></thead>
+      <thead><tr><th>Select</th><th>Job ID</th><th>Scan</th><th>Plugin</th><th>Tier</th><th>Status</th><th>Action</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -59,6 +79,12 @@
   </div>
 
   <script>
+    let approvalsCache = [];
+    let scansCache = [];
+    let pluginMap = {};
+    let currentApprovalPreset = 'all';
+    const selectedApprovalSet = new Set();
+
     async function getJson(url) {
       const r = await fetch(url);
       return r.json();
@@ -68,9 +94,11 @@
       const data = await getJson('/api/plugins');
       const box = document.getElementById('plugins');
       box.innerHTML = '';
+      pluginMap = {};
       for (const p of data.plugins) {
         const id = `pl_${p.name}`;
         box.innerHTML += `<label><input type="checkbox" id="${id}" checked> ${p.name}</label><br>`;
+        pluginMap[p.name] = p;
       }
     }
 
@@ -120,13 +148,134 @@
       await refreshAll();
     }
 
+    async function rejectJob(jobId) {
+      const reason = document.getElementById('approvalReason').value.trim();
+      const r = await fetch(`/api/jobs/${jobId}/reject`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ reason })
+      });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data, null, 2);
+      await refreshAll();
+    }
+
+    function selectedApprovalIds() {
+      return Array.from(selectedApprovalSet);
+    }
+
+    function toggleApprovalSelection(jobId, checked) {
+      if (checked) selectedApprovalSet.add(jobId);
+      else selectedApprovalSet.delete(jobId);
+    }
+
+    function currentApprovalFilters() {
+      const query = document.getElementById('approvalSearch').value.trim().toLowerCase();
+      const scanFilter = document.getElementById('approvalScanIdFilter').value.trim();
+      return { query, scanFilter };
+    }
+
+    function pluginTierByName(pluginName) {
+      const p = pluginMap[pluginName] || {};
+      const t = String(p.tier || '').trim().toLowerCase();
+      if (t === 'low' || t === 'medium' || t === 'high') return t;
+      return 'high';
+    }
+
+    function setApprovalPreset(preset) {
+      currentApprovalPreset = preset;
+      renderApprovalsTable();
+    }
+
+    function filterApprovals(items) {
+      const { query, scanFilter } = currentApprovalFilters();
+      return items.filter(j => {
+        if (scanFilter && String(j.scan_id) !== scanFilter) return false;
+        const tier = pluginTierByName(j.plugin_name);
+        if (currentApprovalPreset === 'high' && tier !== 'high') return false;
+        if (currentApprovalPreset === 'medium_plus' && !(tier === 'high' || tier === 'medium')) return false;
+        if (currentApprovalPreset === 'nuclei' && String(j.plugin_name).toLowerCase() !== 'nuclei') return false;
+        if (currentApprovalPreset === 'scan_active' && !scanFilter) return false;
+        if (!query) return true;
+        const hay = `${j.id} ${j.scan_id} ${j.plugin_name} ${tier} ${j.status}`.toLowerCase();
+        return hay.includes(query);
+      });
+    }
+
+    function renderApprovalsTable() {
+      const body = document.querySelector('#approvalTbl tbody');
+      body.innerHTML = '';
+      const items = filterApprovals(approvalsCache).slice(0, 120);
+      for (const j of items) {
+        const checked = selectedApprovalSet.has(j.id) ? 'checked' : '';
+        const tier = pluginTierByName(j.plugin_name);
+        body.innerHTML += `<tr data-job-id="${j.id}" data-scan-id="${j.scan_id}"><td><input class="approvalChk" type="checkbox" value="${j.id}" ${checked} onchange="toggleApprovalSelection(${j.id}, this.checked)"></td><td>${j.id}</td><td>${j.scan_id}</td><td>${j.plugin_name}</td><td>${tier}</td><td>${j.status}</td><td><button onclick="approveJob(${j.id})">Approve</button> <button onclick="rejectJob(${j.id})">Reject</button></td></tr>`;
+      }
+    }
+
+    function visibleApprovalIds() {
+      const out = [];
+      document.querySelectorAll('#approvalTbl tbody tr[data-job-id]').forEach(row => {
+        const id = parseInt(row.getAttribute('data-job-id') || '0', 10);
+        if (id > 0) out.push(id);
+      });
+      return out;
+    }
+
+    function selectAllVisibleApprovals() {
+      for (const id of visibleApprovalIds()) selectedApprovalSet.add(id);
+      renderApprovalsTable();
+    }
+
+    function clearApprovalSelection() {
+      selectedApprovalSet.clear();
+      renderApprovalsTable();
+    }
+
+    function selectByScanId() {
+      const scanFilter = document.getElementById('approvalScanIdFilter').value.trim();
+      if (!scanFilter) return;
+      for (const j of approvalsCache) {
+        if (String(j.scan_id) === scanFilter) selectedApprovalSet.add(j.id);
+      }
+      renderApprovalsTable();
+    }
+
+    async function bulkApproval(action, allPending=false) {
+      const reason = document.getElementById('approvalReason').value.trim();
+      const job_ids = allPending ? [] : selectedApprovalIds();
+      if (!allPending && job_ids.length === 0) {
+        document.getElementById('submitResult').textContent = 'Tidak ada job terpilih.';
+        return;
+      }
+      const r = await fetch('/api/approvals/bulk', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ action, job_ids, reason })
+      });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data, null, 2);
+      if (!allPending) clearApprovalSelection();
+      await refreshAll();
+    }
+
+    async function bulkApprove(allPending=false) { await bulkApproval('approve', allPending); }
+    async function bulkReject() { await bulkApproval('reject', false); }
+
     async function refreshScans() {
       const data = await getJson('/api/scans');
+      scansCache = data.items || [];
       const body = document.querySelector('#scansTbl tbody');
       body.innerHTML = '';
-      for (const s of data.items) {
-        body.innerHTML += `<tr><td>${s.id}</td><td>${s.target}</td><td>${s.status}</td><td>${s.updated_at}</td></tr>`;
+      for (const s of scansCache) {
+        body.innerHTML += `<tr><td>${s.id}</td><td>${s.target}</td><td>${s.status}</td><td>${s.updated_at}</td><td><button onclick="setApprovalScanFilter(${s.id})">Filter Approvals</button></td></tr>`;
       }
+    }
+
+    function setApprovalScanFilter(scanId) {
+      document.getElementById('approvalScanIdFilter').value = String(scanId);
+      currentApprovalPreset = 'scan_active';
+      renderApprovalsTable();
     }
 
     async function refreshFindings() {
@@ -140,11 +289,13 @@
 
     async function refreshApprovals() {
       const data = await getJson('/api/approvals');
-      const body = document.querySelector('#approvalTbl tbody');
-      body.innerHTML = '';
-      for (const j of data.items.slice(0, 60)) {
-        body.innerHTML += `<tr><td>${j.id}</td><td>${j.scan_id}</td><td>${j.plugin_name}</td><td>${j.status}</td><td><button onclick="approveJob(${j.id})">Approve</button></td></tr>`;
+      approvalsCache = data.items || [];
+      // Hapus selection id yang sudah tidak ada pada pending approvals.
+      const validIds = new Set(approvalsCache.map(x => x.id));
+      for (const id of Array.from(selectedApprovalSet)) {
+        if (!validIds.has(id)) selectedApprovalSet.delete(id);
       }
+      renderApprovalsTable();
     }
 
     async function refreshTimeline() {

@@ -158,6 +158,7 @@ Platform mode upgrades Nexusuite into a queue-driven service layer:
 - Replay failed jobs from API without full rerun
 - Policy-aware worker approval (tier low/medium/high)
 - Approval Center di UI/API untuk approve job `awaiting_approval`
+- Approval Center mendukung reject beralasan + bulk action
 
 Quick start:
 ```bash
