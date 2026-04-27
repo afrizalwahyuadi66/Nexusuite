@@ -167,11 +167,22 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
             echo -e "\n[🤖] Menyerahkan hasil scan ke AI Agent untuk dianalisis dan dieksploitasi..." | tee -a "$TARGET_LOG"
             
             # Eksekusi AI versi BASH dan tampilkan langsung di terminal sambil mencatat di log
-            bash "$AI_SCRIPT" \
-                --target "$target_name" \
-                --log-dir "$target_dir" \
-                --model "${OLLAMA_MODEL:-qwen2.5:0.5b}" \
-                --host "${OLLAMA_HOST:-http://localhost:11434}" | tee -a "$TARGET_LOG" "$AI_RESULT_FILE"
+            if [[ "${AI_PROXY_FOR_INTEL:-false}" == "true" || "${AI_PROXY_FOR_INTEL:-false}" == "1" ]]; then
+                bash "$AI_SCRIPT" \
+                    --target "$target_name" \
+                    --log-dir "$target_dir" \
+                    --plan-file "$target_dir/vulnerabilities/ai_attack_graph.json" \
+                    --model "${OLLAMA_MODEL:-qwen2.5:0.5b}" \
+                    --host "${OLLAMA_HOST:-http://localhost:11434}" | tee -a "$TARGET_LOG" "$AI_RESULT_FILE"
+            else
+                env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy \
+                    bash "$AI_SCRIPT" \
+                    --target "$target_name" \
+                    --log-dir "$target_dir" \
+                    --plan-file "$target_dir/vulnerabilities/ai_attack_graph.json" \
+                    --model "${OLLAMA_MODEL:-qwen2.5:0.5b}" \
+                    --host "${OLLAMA_HOST:-http://localhost:11434}" | tee -a "$TARGET_LOG" "$AI_RESULT_FILE"
+            fi
 
             ai_exit=${PIPESTATUS[0]}
             if [[ $ai_exit -eq 0 ]]; then

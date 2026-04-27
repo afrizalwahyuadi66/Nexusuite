@@ -45,10 +45,15 @@ params_classified="$out_dir/parameters_classified.txt"
 idor_candidates="$out_dir/idor_candidates.txt"
 interesting_files="$out_dir/interesting_files.txt"
 interesting_pack="$out_dir/interesting_endpoints_pack.txt"
+attack_surface_ranked="$out_dir/attack_surface_ranked.txt"
 stack_hints="$out_dir/stack_hints.txt"
 dork_queries="$out_dir/dork_queries.txt"
 dork_results="$out_dir/dork_results.txt"
 summary_file="$out_dir/summary.txt"
+dork_max_results="${AI_DORK_MAX_RESULTS:-8}"
+if [[ "${AI_AGGRESSIVE_MODE:-false}" == "true" || "${AI_AGGRESSIVE_MODE:-false}" == "1" ]]; then
+    dork_max_results="${AI_DORK_MAX_RESULTS:-12}"
+fi
 
 echo "[orchestrator] AI safe orchestrator started for $target_host"
 
@@ -68,6 +73,14 @@ site:$target_host inurl:swagger OR inurl:openapi
 site:$target_host inurl:redirect= OR inurl:return=
 site:$target_host inurl:next= OR inurl:url=
 site:$target_host inurl:callback=
+site:$target_host inurl:login OR inurl:signin OR inurl:auth
+site:$target_host inurl:admin OR inurl:dashboard OR inurl:manage
+site:$target_host inurl:upload OR inurl:import OR inurl:export
+site:$target_host inurl:debug OR inurl:trace OR inurl:test
+site:$target_host inurl:reset-password OR inurl:forgot-password
+site:$target_host inurl:download OR inurl:file= OR inurl:path=
+site:$target_host inurl:graphql OR inurl:graphiql
+site:$target_host "access_token" OR "refresh_token"
 EOF
 
 collect_urls_from_file() {
@@ -130,6 +143,21 @@ else
 fi
 
 if [[ -s "$urls_unique" ]]; then
+    awk '
+    {
+      u=tolower($0); s=0
+      if (u ~ /[?&](id|user_id|uid|account|invoice|order|profile|member)=/) s+=4
+      if (u ~ /[?&](token|jwt|session|api_key|key)=/) s+=5
+      if (u ~ /[?&](redirect|return|next|url|callback)=/) s+=4
+      if (u ~ /(admin|manage|dashboard|internal|debug|staging|dev)/) s+=3
+      if (u ~ /(\.env|\.git|backup|\.bak|swagger|openapi|graphql)/) s+=4
+      print s "\t" $0
+    }' "$urls_unique" | sort -t$'\t' -k1,1nr -k2,2 | head -n 200 > "$attack_surface_ranked"
+else
+    : > "$attack_surface_ranked"
+fi
+
+if [[ -s "$urls_unique" ]]; then
     {
         grep -Ei '\.php(\?|$)' "$urls_unique" >/dev/null && echo "php"
         grep -Ei '\.aspx?(\?|$)' "$urls_unique" >/dev/null && echo "aspnet"
@@ -163,15 +191,16 @@ if [[ "${AI_ENABLE_DORKING:-true}" == "true" ]]; then
         while IFS= read -r q; do
             [[ -n "$q" ]] || continue
             echo "### $q" >> "$dork_results"
-            ddgr --np --nocolor --num 5 "$q" 2>/dev/null | sed '/^$/d' >> "$dork_results" || true
+            ddgr --np --nocolor --num "$dork_max_results" "$q" 2>/dev/null | sed '/^$/d' >> "$dork_results" || true
             echo "" >> "$dork_results"
         done < "$dork_queries"
     elif command -v python >/dev/null 2>&1; then
-        python - "$dork_queries" "$dork_results" <<'PY' || true
+        python - "$dork_queries" "$dork_results" "$dork_max_results" <<'PY' || true
 import sys
 from pathlib import Path
 qfile = Path(sys.argv[1])
 outfile = Path(sys.argv[2])
+max_results = int(sys.argv[3]) if len(sys.argv) > 3 else 8
 try:
     from duckduckgo_search import DDGS
 except Exception:
@@ -183,7 +212,7 @@ with DDGS() as ddgs:
     for q in lines:
         out.append(f"### {q}")
         try:
-            for r in ddgs.text(q, max_results=5):
+            for r in ddgs.text(q, max_results=max_results):
                 title = r.get("title", "")
                 href = r.get("href", "")
                 body = r.get("body", "")
@@ -218,6 +247,7 @@ Classified Parameters: $classified_params_count
 IDOR Candidates: $idor_count
 Interesting Endpoints/Files: $interesting_count
 Interesting Endpoint Pack: $interesting_pack
+Attack Surface Ranked: $attack_surface_ranked
 Stack Hints: $stack_hints ($stack_count)
 Queries: $dork_queries
 Dork Results: $dork_results

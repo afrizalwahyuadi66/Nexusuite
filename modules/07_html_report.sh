@@ -49,6 +49,8 @@ TOTAL_ALIVE=$(wc -l < "$OUTPUT_BASE/alive_hosts.txt" 2>/dev/null || echo "0")
 TOTAL_SQLI=$(grep -c "---" "$REPORT_DIR/sqlmap_vulns.txt" 2>/dev/null || echo 0)
 TOTAL_XSS=$(grep -c "---" "$REPORT_DIR/xss_vulns.txt" 2>/dev/null || echo 0)
 TOTAL_AI=$(grep -c "^---" "$REPORT_DIR/ai_recommendations.txt" 2>/dev/null || echo 0)
+TOTAL_AI_GRAPH=$(grep -c "^---" "$REPORT_DIR/ai_attack_graph_summary.txt" 2>/dev/null || echo 0)
+TOTAL_DORK_INTEL=$(grep -c "^---" "$REPORT_DIR/ai_dorking_summary.txt" 2>/dev/null || echo 0)
 TOTAL_PROXY_AUDIT=$(grep -c "^---" "$REPORT_DIR/proxy_routing_summary.txt" 2>/dev/null || echo 0)
 
 cat << EOF >> "$HTML_FILE"
@@ -57,6 +59,8 @@ cat << EOF >> "$HTML_FILE"
             <div class="card critical" style="flex: 1;"><h3>SQLi Found</h3><p style="font-size: 24px;">$TOTAL_SQLI</p></div>
             <div class="card high" style="flex: 1;"><h3>XSS Found</h3><p style="font-size: 24px;">$TOTAL_XSS</p></div>
             <div class="card medium" style="flex: 1;"><h3>AI Reports</h3><p style="font-size: 24px;">$TOTAL_AI</p></div>
+            <div class="card medium" style="flex: 1;"><h3>AI Graphs</h3><p style="font-size: 24px;">$TOTAL_AI_GRAPH</p></div>
+            <div class="card info" style="flex: 1;"><h3>Dork Intel</h3><p style="font-size: 24px;">$TOTAL_DORK_INTEL</p></div>
             <div class="card info" style="flex: 1;"><h3>Proxy Audits</h3><p style="font-size: 24px;">$TOTAL_PROXY_AUDIT</p></div>
         </div>
 EOF
@@ -108,6 +112,27 @@ fi
 if [[ -f "$REPORT_DIR/ai_recommendations.txt" ]] && [[ -s "$REPORT_DIR/ai_recommendations.txt" ]]; then
     echo "<div class='card high'><h2>🤖 AI Recommendations</h2><pre>" >> "$HTML_FILE"
     awk '{gsub(/&/,"\&amp;"); gsub(/</,"\&lt;"); gsub(/>/,"\&gt;"); print}' "$REPORT_DIR/ai_recommendations.txt" >> "$HTML_FILE"
+    echo "</pre></div>" >> "$HTML_FILE"
+fi
+
+# AI Attack Graph
+if [[ -f "$REPORT_DIR/ai_attack_graph_summary.txt" ]] && [[ -s "$REPORT_DIR/ai_attack_graph_summary.txt" ]]; then
+    echo "<div class='card critical'><h2>🧠 AI Attack Graph</h2><pre>" >> "$HTML_FILE"
+    awk 'NR<=220 {gsub(/&/,"\&amp;"); gsub(/</,"\&lt;"); gsub(/>/,"\&gt;"); print}' "$REPORT_DIR/ai_attack_graph_summary.txt" >> "$HTML_FILE"
+    echo "</pre></div>" >> "$HTML_FILE"
+fi
+
+# AI Dorking Intelligence
+if [[ -f "$REPORT_DIR/ai_dorking_summary.txt" ]] && [[ -s "$REPORT_DIR/ai_dorking_summary.txt" ]]; then
+    echo "<div class='card info'><h2>🛰️ AI Dorking Intelligence</h2><pre>" >> "$HTML_FILE"
+    awk 'NR<=220 {gsub(/&/,"\&amp;"); gsub(/</,"\&lt;"); gsub(/>/,"\&gt;"); print}' "$REPORT_DIR/ai_dorking_summary.txt" >> "$HTML_FILE"
+    echo "</pre></div>" >> "$HTML_FILE"
+fi
+
+# AI Campaign Memory
+if [[ -f "$REPORT_DIR/ai_campaign_memory.txt" ]] && [[ -s "$REPORT_DIR/ai_campaign_memory.txt" ]]; then
+    echo "<div class='card medium'><h2>🧬 AI Campaign Memory</h2><pre>" >> "$HTML_FILE"
+    awk 'NR<=220 {gsub(/&/,"\&amp;"); gsub(/</,"\&lt;"); gsub(/>/,"\&gt;"); print}' "$REPORT_DIR/ai_campaign_memory.txt" >> "$HTML_FILE"
     echo "</pre></div>" >> "$HTML_FILE"
 fi
 

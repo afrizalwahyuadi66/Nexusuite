@@ -1,4 +1,4 @@
-<h1 align="center">Nexusuite v3.3.0 (AI Edition)</h1>
+<h1 align="center">Nexusuite v3.5.0 (Autonomous AI Pentester Edition)</h1>
 
 <p align="center">
   <b>Professional Web & Network Vulnerability Scanner with Autonomous AI Assistance</b><br>
@@ -14,41 +14,53 @@
 
 ---
 
-## Overview
-Nexusuite is a terminal-based security automation framework that combines industry-standard tools (`nmap`, `nuclei`, `ffuf`, `sqlmap`, `nikto`, and more) into a single guided workflow.
+## 🌟 What's New in v3.5.0 (AI Edition)
+Nexusuite has evolved into a fully autonomous, AI-driven penetration testing framework. The AI doesn't just read outputs anymore; it actively plans, dorks, replans, and exploits.
 
-It also includes optional local AI support (Ollama + RAG) to:
-- parse scan output,
-- detect likely CVEs and critical findings,
-- correlate with local exploit intelligence (`searchsploit` dataset),
-- provide practical next-step command suggestions for analysts.
-
-## Key Features
-- Interactive TUI powered by `gum` for a clean CLI experience.
-- Recon and enumeration pipeline (`subfinder`, `httpx`, `gau`, `katana`, `paramspider`, `arjun`).
-- Vulnerability scanning orchestration (`nuclei`, `sqlmap`, `dalfox`, `wapiti`, `nikto`, `ffuf`).
-- Proxy-aware execution with per-tool proxy injection and routing policy controls.
-- Per-target proxy forensic audit (`attempt`, `exit_code`, `duration`, `cmd_hash`).
-- Human-readable and machine-readable output navigation files.
-- Consolidated text report and HTML dashboard generation.
+- **🤖 AI Orchestrator (Full Control Mode):** The AI decision engine acts as the primary planner. It determines the optimal tool execution order, skips unnecessary tools, sets retry policies, and customizes arguments (`nmap`/`sqlmap`) per target.
+- **🔍 Active AI Dorking & Discovery:** While tools run, the AI Orchestrator performs passive dorking (DuckDuckGo) in the background to find sensitive parameters, IDOR candidates, and exposed admin panels.
+- **🧠 Multi-Phase AI Planning:** 
+  1. **Pre-plan:** Initial tool selection and rate limiting.
+  2. **Re-plan (Post-Recon):** AI adjusts its strategy (Web vs. Network focus) based on live recon data (alive hosts, URLs with params).
+  3. **AI Attack Graph (Post-Vuln):** The AI builds a prioritized attack path based on confirmed vulnerabilities (`nuclei`, `sqlmap`, `xss`).
+- **🧬 AI Campaign Memory:** The AI learns across targets. It remembers which CVEs/techniques worked or failed and applies this historical context to future targets.
+- **🔥 Aggressive Mode:** Optional setting to increase verification depth, controlled exploitation actions, and dorking queries for deep testing.
+- **📊 Enhanced HTML Dashboard:** Beautiful, interactive reporting including AI Decision Timelines, AI Attack Graphs, Dorking Intelligence, and Proxy Routing Audits.
 
 ---
 
-## Workflow Architecture
+## 📋 Overview
+Nexusuite is a terminal-based security automation framework that combines industry-standard tools (`nmap`, `nuclei`, `ffuf`, `sqlmap`, `nikto`, and more) into a single guided workflow.
+
+It includes powerful local AI support (Ollama + RAG) to:
+- Act as an Autonomous Pentester (planning, verification, and controlled exploitation).
+- Parse scan output and detect likely CVEs.
+- Correlate with local exploit intelligence (`searchsploit` dataset).
+- Provide practical next-step command suggestions for analysts.
+
+## ✨ Key Features
+- Interactive TUI powered by `gum` for a clean CLI experience.
+- Recon and enumeration pipeline (`subfinder`, `httpx`, `gau`, `katana`, `paramspider`, `arjun`, `ffuf`).
+- Vulnerability scanning orchestration (`nuclei`, `sqlmap`, `dalfox`, `wapiti`, `nikto`).
+- **Proxy-aware execution** with per-tool proxy injection, routing policy controls, and safe local-bypass for AI/Ollama.
+- Per-target proxy forensic audit (`attempt`, `exit_code`, `duration`, `cmd_hash`).
+- Consolidated text report and comprehensive **HTML dashboard** generation.
+
+---
+
+## 🏗️ Workflow Architecture
 ```mermaid
 graph TD
-    A[Run ./nexusuite.sh] --> B[Select Targets and Modules in TUI]
-    B --> C{Phase 1: Recon}
-    C --> D[Subdomains, Hosts, URLs]
-    C --> E[Service Discovery]
-    D --> F{Phase 2: Vulnerability Scanning}
-    E --> F
-    F --> G[Tool Outputs per Target]
-    G --> H{Phase 3: Optional AI Analysis}
-    H --> I[Correlate Findings and Exploit Intelligence]
-    I --> J[Actionable Recommendations]
-    G --> K[Text + HTML Reports]
-    J --> K
+    A[Run ./nexusuite.sh] --> B[Startup: Manual or AI Full Control]
+    B --> C[AI Pre-Plan: Tool Selection & Policy]
+    C --> D{Phase 1: Recon & Dorking}
+    D --> E[AI Re-Plan: Adjust Strategy]
+    E --> F{Phase 2: Vulnerability Scanning}
+    F --> G[Build AI Attack Graph]
+    G --> H{Phase 3: Autonomous AI Pentester}
+    H --> I[AI Verification & Controlled Exploitation]
+    I --> J[Update AI Campaign Memory]
+    J --> K[Generate Text + HTML Dashboard Reports]
 ```
 
 ---
@@ -72,7 +84,7 @@ Minimum required tooling includes:
 - `jq`
 - `python3`
 
-## AI Setup (Optional, Recommended)
+## 🤖 AI Setup (Optional, Recommended)
 ```bash
 # Install Ollama (Linux/macOS)
 curl -fsSL https://ollama.com/install.sh | sh
@@ -86,12 +98,21 @@ pip install -r ai_rag_tool/requirements.txt
 
 For Windows, install Ollama from [ollama.com/download](https://ollama.com/download).
 
-Configure AI settings via `.env`:
+Configure AI settings via `.env` (or export directly):
 ```bash
 cp .env.example .env
-# Example:
-# OLLAMA_HOST=http://localhost:11434
-# OLLAMA_MODEL=qwen2.5:0.5b
+
+# Base AI Config
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:0.5b
+
+# Advanced Autonomous Pentester Configs
+AI_AGGRESSIVE_MODE=true
+AI_AGGRESSIVE_LEVEL=2
+AI_DORK_MAX_RESULTS=12
+AI_PROXY_FOR_INTEL=false
+AI_EXECUTE_VERIFICATION=true
+AI_EXECUTE_CONTROLLED_ACTIONS=true
 ```
 
 Optional exploit dataset update:
@@ -123,20 +144,20 @@ powershell -ExecutionPolicy Bypass -File .\run_windows.ps1 --doctor-json
 
 ---
 
-## Usage
+## 🚀 Usage
 ```bash
 chmod +x nexusuite.sh
 ./nexusuite.sh
 ```
 
 Interactive flow:
-1. Choose whether to enable AI analysis.
+1. **Choose Startup Mode:** Select between `Manual` (AI for post-analysis only) or `AI Full Control` (Autonomous Pentester mode).
 2. Configure proxy mode and routing policy:
    - `Best Effort`: falls back when strict proxy injection is unavailable.
    - `Strict Proxy-Only`: skips unsupported network steps to avoid direct leaks.
-3. Provide target(s) (single host/domain or input file).
-4. Select modules to execute.
-5. Review generated reports and optional AI recommendations.
+3. Provide target(s) (single host/domain, input file, or autonomous AI loading).
+4. Select modules to execute (if not in Full Control).
+5. Review generated reports and the HTML dashboard!
 
 Additional CLI modes:
 ```bash
@@ -148,7 +169,7 @@ Additional CLI modes:
 ./nexusuite.sh --help
 ```
 
-## Platform Mode (New)
+## 🏗️ Platform Mode (New)
 Platform mode upgrades Nexusuite into a queue-driven service layer:
 - Plugin-based tool runner via `config/tool_plugins/*.yaml`
 - Persistent state with SQLite (`platform_state.db`)

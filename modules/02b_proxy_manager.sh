@@ -62,7 +62,32 @@ mark_proxy_dead() {
 }
 
 set_proxy_env() {
+    build_no_proxy_list() {
+        local merged="${AI_NO_PROXY:-${NO_PROXY:-${no_proxy:-}}}"
+        local ollama_host=""
+        local entry
+        if [[ -n "${OLLAMA_HOST:-}" ]]; then
+            ollama_host="$(echo "${OLLAMA_HOST}" | sed -E 's#^[a-zA-Z]+://##; s#/.*$##; s#:[0-9]+$##')"
+        fi
+        for entry in localhost 127.0.0.1 ::1 "$ollama_host"; do
+            [[ -n "$entry" ]] || continue
+            case ",$merged," in
+                *,"$entry",*) ;;
+                *)
+                    if [[ -n "$merged" ]]; then
+                        merged+=",${entry}"
+                    else
+                        merged="${entry}"
+                    fi
+                    ;;
+            esac
+        done
+        printf '%s' "$merged"
+    }
+
     local proxy="$1"
+    local bypass_list
+    bypass_list="$(build_no_proxy_list)"
     if [[ -n "$proxy" ]]; then
         export HTTP_PROXY="$proxy"
         export HTTPS_PROXY="$proxy"
@@ -76,6 +101,8 @@ set_proxy_env() {
         export https_proxy=""
         export ALL_PROXY=""
     fi
+    export NO_PROXY="$bypass_list"
+    export no_proxy="$bypass_list"
 }
 
 rotate_proxy() {

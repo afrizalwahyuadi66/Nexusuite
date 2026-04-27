@@ -239,6 +239,55 @@ else
     echo "No AI recommendation output available." >> "$REPORT_DIR/full_report.txt"
 fi
 
+# 11.1 AI Attack Graph (post-vulnerability planning)
+write_section "AI ATTACK GRAPH (POST-VULNERABILITY PLAN)"
+AI_ATTACK_GRAPH_SUMMARY="$REPORT_DIR/ai_attack_graph_summary.txt"
+: > "$AI_ATTACK_GRAPH_SUMMARY"
+find "$OUTPUT_BASE/targets" -name "ai_attack_graph.txt" -type f 2>/dev/null | while read -r gfile; do
+    domain_name=$(get_domain "$gfile")
+    echo "--- $domain_name ---" >> "$AI_ATTACK_GRAPH_SUMMARY"
+    cat "$gfile" >> "$AI_ATTACK_GRAPH_SUMMARY"
+    echo "" >> "$AI_ATTACK_GRAPH_SUMMARY"
+done
+if [[ -s "$AI_ATTACK_GRAPH_SUMMARY" ]]; then
+    cat "$AI_ATTACK_GRAPH_SUMMARY" >> "$REPORT_DIR/full_report.txt"
+else
+    echo "No AI attack graph output available." >> "$REPORT_DIR/full_report.txt"
+fi
+
+# 11.2 Dorking Intelligence
+write_section "AI DORKING INTELLIGENCE"
+AI_DORKING_SUMMARY="$REPORT_DIR/ai_dorking_summary.txt"
+: > "$AI_DORKING_SUMMARY"
+find "$OUTPUT_BASE/targets" -path "*/recon/ai_orchestrator/summary.txt" -type f 2>/dev/null | while read -r sfile; do
+    domain_name=$(get_domain "$sfile")
+    echo "--- $domain_name ---" >> "$AI_DORKING_SUMMARY"
+    cat "$sfile" >> "$AI_DORKING_SUMMARY"
+    echo "" >> "$AI_DORKING_SUMMARY"
+done
+if [[ -s "$AI_DORKING_SUMMARY" ]]; then
+    cat "$AI_DORKING_SUMMARY" >> "$REPORT_DIR/full_report.txt"
+else
+    echo "No AI dorking summary available." >> "$REPORT_DIR/full_report.txt"
+fi
+
+# 11.3 Campaign Memory (cross-target learning)
+write_section "AI CAMPAIGN MEMORY (CROSS-TARGET LEARNING)"
+AI_CAMPAIGN_MEMORY_TXT="$REPORT_DIR/ai_campaign_memory.txt"
+: > "$AI_CAMPAIGN_MEMORY_TXT"
+if [[ -s "$OUTPUT_BASE/ai_memory/campaign_memory.jsonl" ]]; then
+    jq -r '
+      "timestamp\ttarget\tcve\trisk\tpersona\tphase2_focus\ttechnique",
+      (. | fromjson? // .) as $x
+      | "\($x.timestamp // "NA")\t\($x.target // "NA")\t\($x.cve // "None")\t\($x.risk // "NA")\t\($x.persona // "NA")\t\($x.phase2_focus // "NA")\t\($x.technique // "NA")"
+    ' "$OUTPUT_BASE/ai_memory/campaign_memory.jsonl" > "$AI_CAMPAIGN_MEMORY_TXT" 2>/dev/null || true
+fi
+if [[ -s "$AI_CAMPAIGN_MEMORY_TXT" ]]; then
+    cat "$AI_CAMPAIGN_MEMORY_TXT" >> "$REPORT_DIR/full_report.txt"
+else
+    echo "No campaign memory entries yet." >> "$REPORT_DIR/full_report.txt"
+fi
+
 # 11.5 Confidence Scoring & Dedup
 write_section "CONFIDENCE-SCORED FINDINGS"
 SCORED_SUMMARY="$REPORT_DIR/scored_findings_summary.tsv"
@@ -381,6 +430,9 @@ done
     echo "[Audit & Intelligence]"
     echo "- Proxy Audit Summary  : report/proxy_routing_summary.txt"
     echo "- AI Recommendations   : report/ai_recommendations.txt"
+    echo "- AI Attack Graph      : report/ai_attack_graph_summary.txt"
+    echo "- AI Dorking Intel     : report/ai_dorking_summary.txt"
+    echo "- AI Campaign Memory   : report/ai_campaign_memory.txt"
     echo ""
     echo "[Target Navigation]"
     echo "- Per-target quick map : report/targets_navigator.txt"
@@ -417,6 +469,8 @@ gum style --margin "1 0" --foreground 240 "$(cat <<EOF
 - XSS: $(grep -c "---" "$DALFOX_FINDINGS" 2>/dev/null || echo 0) domain(s) affected
 - Nmap vulns: $(wc -l < "$NMAP_VULN" 2>/dev/null || echo 0) findings
 - AI Recommendations: $(grep -c "^---" "$AI_RECOMMENDATIONS" 2>/dev/null || echo 0) target(s)
+- AI Attack Graph: $(grep -c "^---" "$AI_ATTACK_GRAPH_SUMMARY" 2>/dev/null || echo 0) target(s)
+- AI Dorking Intel: $(grep -c "^---" "$AI_DORKING_SUMMARY" 2>/dev/null || echo 0) target(s)
 - Proxy Audit: $(grep -c "^---" "$PROXY_AUDIT_SUMMARY" 2>/dev/null || echo 0) target(s)
 - Confirmed/Audited Bugs: ${TOTAL_CONFIRMED_BUGS:-0}
 - Output Navigator: README_OUTPUT.txt + report/targets_navigator.txt

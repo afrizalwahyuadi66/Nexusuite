@@ -242,14 +242,30 @@ YELLOW='\033[1;33m'
 CYAN='\033[1;36m'
 NC='\033[0m' # No Color
 
-# Tanyakan apakah pengguna ingin mengaktifkan AI Pentester
+# Tanyakan mode AI saat awal startup.
+# - Manual: AI hanya untuk analisis/audit (opsional)
+# - Full Control: AI orchestrator aktif + dorking aktif selama scan berjalan
 if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-false}" == "1" ]]; then
     export USE_AI="y"
-    echo -e "${CYAN}[*] AI Orchestrator mode aktif: AI diaktifkan otomatis.${NC}"
+    echo -e "${CYAN}[*] AI Orchestrator mode aktif dari environment: AI Full Control diaktifkan otomatis.${NC}"
 else
-    echo -e "${YELLOW}[?] Apakah Anda ingin menggunakan AI Pentester (Ollama Lokal) untuk menganalisis hasil scan? (y/n) [n]: ${NC}\c"
-    read USE_AI
-    export USE_AI=${USE_AI:-n}
+    echo -e "${YELLOW}[?] Pilih mode operasi AI saat startup:${NC}"
+    echo -e "    1) Manual (default) - tools berjalan normal, AI opsional untuk analisis"
+    echo -e "    2) AI Full Control - AI mengorkestrasi discovery + dorking selama scan"
+    echo -e "${YELLOW}Masukkan pilihan [1/2] (default: 1): ${NC}\c"
+    read AI_BOOT_MODE
+    AI_BOOT_MODE="${AI_BOOT_MODE:-1}"
+
+    if [[ "$AI_BOOT_MODE" == "2" ]]; then
+        export AI_ORCHESTRATOR_MODE="true"
+        export USE_AI="y"
+        export AI_ENABLE_DORKING="${AI_ENABLE_DORKING:-true}"
+        echo -e "${CYAN}[*] AI Full Control aktif: orchestrator + dorking akan dijalankan.${NC}"
+    else
+        echo -e "${YELLOW}[?] Aktifkan AI Pentester (Ollama Lokal) untuk analisis hasil scan? (y/n) [n]: ${NC}\c"
+        read USE_AI
+        export USE_AI=${USE_AI:-n}
+    fi
 fi
 
 # Jika pengguna memilih ya, cek status Ollama

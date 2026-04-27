@@ -52,8 +52,14 @@ export USE_PROXY="false"
 export PROXY_STRICT="false"
 AI_AUTONOMOUS_MODE=false
 AI_REPLAY_MODE=false
+AI_AUTONOMOUS_TARGETS_NORMALIZED="$(echo "${AI_AUTONOMOUS_TARGETS:-}" | tr ', ' '\n\n' | sed '/^$/d' || true)"
 if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-false}" == "1" ]]; then
-    AI_AUTONOMOUS_MODE=true
+    # Autonomous target loading hanya aktif jika target diberikan via env/file.
+    # Jika tidak ada, kita tetap lanjut mode interaktif normal (manual target prompt),
+    # namun fitur AI orchestrator di fase scan tetap bisa aktif.
+    if [[ -n "${AI_AUTONOMOUS_TARGETS_FILE:-}" || -n "${AI_AUTONOMOUS_TARGETS_NORMALIZED:-}" ]]; then
+        AI_AUTONOMOUS_MODE=true
+    fi
 fi
 if [[ "${AI_REPLAY_FAILED_ONLY:-false}" == "true" || "${AI_REPLAY_FAILED_ONLY:-false}" == "1" ]]; then
     AI_REPLAY_MODE=true
@@ -69,6 +75,8 @@ write_mode_marker() {
 
 if [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
     gum style --foreground 240 "AI Orchestrator aktif: default No Proxy."
+elif [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-false}" == "1" ]]; then
+    gum style --foreground 240 "AI Orchestrator aktif tanpa target env/file: lanjut mode target interaktif."
 elif [[ "${DRY_RUN:-false}" == "true" ]]; then
     gum style --foreground 240 "DRY-RUN aktif: proxy check dilewati."
 else
