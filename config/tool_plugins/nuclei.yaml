@@ -1,0 +1,4 @@
+name: nuclei
+tier: medium
+timeout_sec: 1200
+command_template: nuclei -u {target} -silent -o {output}

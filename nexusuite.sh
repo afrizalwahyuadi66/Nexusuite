@@ -13,16 +13,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCTOR_MODE=false
 DOCTOR_JSON=false
 DRY_RUN=false
+PLATFORM_API=false
+PLATFORM_WORKER=false
 
 show_help() {
     cat <<'EOF'
 Usage:
-  ./nexusuite.sh [--doctor] [--doctor-json] [--dry-run] [--help]
+  ./nexusuite.sh [--doctor] [--doctor-json] [--dry-run] [--platform-api] [--platform-worker] [--help]
 
 Options:
   --doctor   Jalankan self-check dependency + konektivitas AI, lalu keluar.
   --doctor-json Jalankan self-check dalam format JSON (untuk CI/automation).
   --dry-run  Simulasi workflow tanpa mengeksekusi command scanning.
+  --platform-api Jalankan API server + Web UI platform mode.
+  --platform-worker Jalankan worker queue platform mode.
   --help     Tampilkan bantuan.
 EOF
 }
@@ -182,6 +186,8 @@ while [[ $# -gt 0 ]]; do
             DOCTOR_JSON=true
             ;;
         --dry-run) DRY_RUN=true ;;
+        --platform-api) PLATFORM_API=true ;;
+        --platform-worker) PLATFORM_WORKER=true ;;
         --help|-h)
             show_help
             exit 0
@@ -198,6 +204,22 @@ done
 if [[ "$DOCTOR_MODE" == "true" ]]; then
     run_doctor "$DOCTOR_JSON"
     exit $?
+fi
+
+if [[ "$PLATFORM_API" == "true" ]]; then
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "python3 tidak ditemukan. Platform API membutuhkan python3."
+        exit 1
+    fi
+    exec python3 "$SCRIPT_DIR/platform/api_server.py"
+fi
+
+if [[ "$PLATFORM_WORKER" == "true" ]]; then
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "python3 tidak ditemukan. Platform Worker membutuhkan python3."
+        exit 1
+    fi
+    exec python3 "$SCRIPT_DIR/platform/worker.py"
 fi
 
 export DRY_RUN

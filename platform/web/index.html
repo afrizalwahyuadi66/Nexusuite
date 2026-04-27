@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexusuite Platform UI</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background:#111; color:#eee; }
+    .card { background:#1d1d1d; border:1px solid #333; border-radius:8px; padding:16px; margin-bottom:16px; }
+    input, button, select { padding:8px; margin:4px 0; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { border-bottom:1px solid #333; padding:8px; text-align:left; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .col { flex:1; min-width:260px; }
+  </style>
+</head>
+<body>
+  <h1>Nexusuite Platform v1</h1>
+  <div class="card">
+    <h3>Submit Scan</h3>
+    <label>Target</label><br>
+    <input id="target" placeholder="example.com" style="width:320px"><br>
+    <label>Plugins</label><br>
+    <div id="plugins"></div>
+    <button onclick="submitScan()">Submit</button>
+    <button onclick="explainPlan()">Dry-Run Explain</button>
+    <br>
+    <label>Replay Failed (Scan ID)</label><br>
+    <input id="replayScanId" placeholder="scan id" style="width:160px">
+    <button onclick="replayFailed()">Replay Failed</button>
+    <div id="submitResult"></div>
+  </div>
+
+  <div class="row">
+    <div class="card col">
+      <h3>Scans</h3>
+      <table id="scansTbl"><thead><tr><th>ID</th><th>Target</th><th>Status</th><th>Updated</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card col">
+      <h3>Findings</h3>
+      <table id="findTbl"><thead><tr><th>Scan</th><th>Severity</th><th>Confidence</th><th>Title</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Approval Center</h3>
+    <table id="approvalTbl">
+      <thead><tr><th>Job ID</th><th>Scan</th><th>Plugin</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>AI Timeline</h3>
+    <table id="timelineTbl">
+      <thead><tr><th>At</th><th>Scan</th><th>Job</th><th>Event</th><th>Status</th><th>Detail</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    async function getJson(url) {
+      const r = await fetch(url);
+      return r.json();
+    }
+
+    async function loadPlugins() {
+      const data = await getJson('/api/plugins');
+      const box = document.getElementById('plugins');
+      box.innerHTML = '';
+      for (const p of data.plugins) {
+        const id = `pl_${p.name}`;
+        box.innerHTML += `<label><input type="checkbox" id="${id}" checked> ${p.name}</label><br>`;
+      }
+    }
+
+    function selectedPlugins() {
+      const out = [];
+      document.querySelectorAll('#plugins input[type=checkbox]').forEach(x => { if (x.checked) out.push(x.id.replace('pl_', '')); });
+      return out;
+    }
+
+    async function submitScan() {
+      const target = document.getElementById('target').value.trim();
+      const plugins = selectedPlugins();
+      const r = await fetch('/api/scans', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ target, plugins, profile: 'platform_v1' })
+      });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data);
+      await refreshAll();
+    }
+
+    async function explainPlan() {
+      const target = document.getElementById('target').value.trim();
+      const r = await fetch('/api/ai/explain', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ target, profile: 'standard' })
+      });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function replayFailed() {
+      const scanId = document.getElementById('replayScanId').value.trim();
+      if (!scanId) return;
+      const r = await fetch(`/api/scans/${scanId}/replay`, { method: 'POST' });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data, null, 2);
+      await refreshAll();
+    }
+
+    async function approveJob(jobId) {
+      const r = await fetch(`/api/jobs/${jobId}/approve`, { method: 'POST' });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data, null, 2);
+      await refreshAll();
+    }
+
+    async function refreshScans() {
+      const data = await getJson('/api/scans');
+      const body = document.querySelector('#scansTbl tbody');
+      body.innerHTML = '';
+      for (const s of data.items) {
+        body.innerHTML += `<tr><td>${s.id}</td><td>${s.target}</td><td>${s.status}</td><td>${s.updated_at}</td></tr>`;
+      }
+    }
+
+    async function refreshFindings() {
+      const data = await getJson('/api/findings');
+      const body = document.querySelector('#findTbl tbody');
+      body.innerHTML = '';
+      for (const f of data.items.slice(0, 40)) {
+        body.innerHTML += `<tr><td>${f.scan_id}</td><td>${f.severity}</td><td>${f.confidence}</td><td>${f.title}</td></tr>`;
+      }
+    }
+
+    async function refreshApprovals() {
+      const data = await getJson('/api/approvals');
+      const body = document.querySelector('#approvalTbl tbody');
+      body.innerHTML = '';
+      for (const j of data.items.slice(0, 60)) {
+        body.innerHTML += `<tr><td>${j.id}</td><td>${j.scan_id}</td><td>${j.plugin_name}</td><td>${j.status}</td><td><button onclick="approveJob(${j.id})">Approve</button></td></tr>`;
+      }
+    }
+
+    async function refreshTimeline() {
+      const data = await getJson('/api/timeline');
+      const body = document.querySelector('#timelineTbl tbody');
+      body.innerHTML = '';
+      for (const t of data.items.slice(0, 80)) {
+        body.innerHTML += `<tr><td>${t.created_at}</td><td>${t.scan_id}</td><td>${t.job_id || ''}</td><td>${t.event}</td><td>${t.status}</td><td>${t.detail}</td></tr>`;
+      }
+    }
+
+    async function refreshAll() {
+      await refreshScans();
+      await refreshFindings();
+      await refreshApprovals();
+      await refreshTimeline();
+    }
+
+    loadPlugins().then(refreshAll);
+    setInterval(refreshAll, 5000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+name: sqlmap
+tier: high
+timeout_sec: 2400
+command_template: sqlmap -u {target} --batch --smart --output-dir=platform_runs/sqlmap --flush-session > {output} 2>&1

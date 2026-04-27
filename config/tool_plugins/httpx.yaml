@@ -1,0 +1,4 @@
+name: httpx
+tier: low
+timeout_sec: 900
+command_template: httpx -u {target} -title -status-code -silent -o {output}

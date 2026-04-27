@@ -143,7 +143,29 @@ Additional CLI modes:
 ./nexusuite.sh --doctor
 ./nexusuite.sh --doctor-json
 ./nexusuite.sh --dry-run
+./nexusuite.sh --platform-api
+./nexusuite.sh --platform-worker
 ./nexusuite.sh --help
+```
+
+## Platform Mode (New)
+Platform mode upgrades Nexusuite into a queue-driven service layer:
+- Plugin-based tool runner via `config/tool_plugins/*.yaml`
+- Persistent state with SQLite (`platform_state.db`)
+- REST API for scans/jobs/findings
+- Lightweight Web UI timeline (`http://127.0.0.1:8787/ui`)
+- Unified finding schema with initial confidence + dedup merge
+- Replay failed jobs from API without full rerun
+- Policy-aware worker approval (tier low/medium/high)
+- Approval Center di UI/API untuk approve job `awaiting_approval`
+
+Quick start:
+```bash
+# Terminal 1
+./nexusuite.sh --platform-api
+
+# Terminal 2
+./nexusuite.sh --platform-worker
 ```
 
 ## Scope Policy Precedence
@@ -178,6 +200,10 @@ CLI mode details:
   Runs the same health checks as `--doctor`, but outputs structured JSON for automation, CI/CD pipelines, or external monitoring/integration scripts.
 - `./nexusuite.sh --dry-run`
   Simulates the full workflow without executing actual scan commands. Useful for validating configuration, module selection, target loading, and report flow safely before a real scan.
+- `./nexusuite.sh --platform-api`
+  Starts Nexusuite Platform API server and lightweight Web UI (`/ui`) for scan submission and monitoring.
+- `./nexusuite.sh --platform-worker`
+  Starts queue worker that continuously pulls pending jobs from SQLite state and executes plugin commands.
 - `./nexusuite.sh --help`
   Displays command usage, available flags, and quick CLI references.
 
