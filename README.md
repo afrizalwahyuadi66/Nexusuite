@@ -146,6 +146,31 @@ Additional CLI modes:
 ./nexusuite.sh --help
 ```
 
+## Scope Policy Precedence
+Nexusuite supports policy-driven scope guard through `config/risk_policy.yaml` (or custom path via `AI_RISK_POLICY_FILE` in `.env`).
+
+Scope evaluation order is:
+1. `scope_blocklist` and `scope_blocked_suffixes` (highest priority, immediate block)
+2. `scope_allowlist` (must match when defined)
+3. Private/local range checks (`scope_allow_private_ranges`, `scope_allow_localhost`)
+
+This means **blocklist always overrides allowlist**.
+
+Example:
+```yaml
+scope_allow_private_ranges: false
+scope_allow_localhost: false
+scope_allowlist: example.com,api.example.com
+scope_blocklist: admin.example.com,*.staging.example.com,*.internal
+scope_blocked_suffixes: .internal,.corp,.lan,.local,home.arpa
+```
+
+With the above policy:
+- `api.example.com` -> allowed
+- `admin.example.com` -> blocked (explicit blocklist)
+- `dev.staging.example.com` -> blocked (wildcard blocklist)
+- `service.internal` -> blocked (suffix blocklist)
+
 CLI mode details:
 - `./nexusuite.sh --doctor`
   Runs a human-readable environment health check. Verifies required tools, Python module availability, and AI endpoint/model readiness (Ollama), then prints an operator-friendly status summary.

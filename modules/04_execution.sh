@@ -32,7 +32,9 @@ for ((i=0; i<total; i++)); do
 
     # Rolling Queue: wait if active background jobs reach CONCURRENCY limit
     while [[ $(jobs -r -p | wc -l) -ge $CONCURRENCY ]]; do
-        wait -n 2>/dev/null || sleep 1
+        if ! wait -n 2>/dev/null; then
+            :
+        fi
     done
 done
 
@@ -40,7 +42,9 @@ done
 echo ""
 gum style --foreground 212 --border normal --border-foreground 212 --padding "0 2" "⏳ All targets dispatched. Waiting for background tasks to complete..."
 while [[ $(jobs -p | wc -l) -gt 0 ]]; do
-    wait -n 2>/dev/null || sleep 1
+    if ! wait -n 2>/dev/null; then
+        :
+    fi
 done
 echo ""
 gum style --foreground 46 --border double --border-foreground 46 --padding "0 2" "✨ All executions complete! ✨"

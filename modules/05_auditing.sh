@@ -6,9 +6,30 @@ set +e
 
 gum style --margin "1 0" --foreground 212 "## 🔍 Starting Automated Auditing & Triage..."
 
+AI_TOOL_DIR="$(dirname "$(dirname "$BASH_SOURCE")")/ai_rag_tool"
+if [[ -f "$AI_TOOL_DIR/ai_config.sh" ]]; then
+    # shellcheck disable=SC1090
+    source "$AI_TOOL_DIR/ai_config.sh"
+fi
+
 export TOTAL_CONFIRMED_BUGS=0
 AUDIT_SUMMARY_FILE="$OUTPUT_BASE/audited_summary.txt"
 > "$AUDIT_SUMMARY_FILE"
+
+score_line() {
+    local line="$1"
+    local score=35
+    [[ "$line" == *"[Nuclei]"* ]] && score=$((score + 25))
+    [[ "$line" == *"[SQLi]"* ]] && score=$((score + 30))
+    [[ "$line" == *"[XSS]"* ]] && score=$((score + 20))
+    [[ "$line" == *"[FFUF]"* ]] && score=$((score + 12))
+    [[ "$line" == *"[Nmap]"* ]] && score=$((score + 10))
+    [[ "$line" == *"[critical]"* || "$line" == *"[CRITICAL]"* ]] && score=$((score + 25))
+    [[ "$line" == *"[high]"* || "$line" == *"[HIGH]"* ]] && score=$((score + 15))
+    [[ "$line" == *"CVE-"* ]] && score=$((score + 15))
+    (( score > 100 )) && score=100
+    printf '%s' "$score"
+}
 
 for target_dir in "$OUTPUT_BASE/targets/"*; do
     [[ -d "$target_dir" ]] || continue
@@ -78,6 +99,30 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
     if [[ -s "$AUDIT_FILE" ]]; then
         # Buang duplikat log (sort -u) jika tools mendeteksi hal yang sama berkali-kali
         sort -u -o "$AUDIT_FILE" "$AUDIT_FILE"
+
+        SCORED_FILE="$target_dir/vulnerabilities/scored_findings.tsv"
+        DEDUP_FILE="$target_dir/vulnerabilities/dedup_findings.txt"
+        {
+            echo -e "score\tsource\tfinding"
+            while IFS= read -r finding; do
+                [[ -n "$finding" ]] || continue
+                score="$(score_line "$finding")"
+                src="$(echo "$finding" | sed -n 's/^\[\([^]]*\)\].*/\1/p')"
+                [[ -z "$src" ]] && src="Unknown"
+                printf "%s\t%s\t%s\n" "$score" "$src" "$finding"
+            done < "$AUDIT_FILE"
+        } | sort -t$'\t' -k1,1nr > "$SCORED_FILE"
+
+        awk -F'\t' 'NR==1{next} {
+            key=$3
+            gsub(/https?:\/\/[^ ]+/, "<url>", key)
+            gsub(/[0-9]{1,6}/, "<n>", key)
+            if (!(key in seen)) {
+                seen[key]=1
+                print $3
+            }
+        }' "$SCORED_FILE" > "$DEDUP_FILE"
+
         bug_count=$(wc -l < "$AUDIT_FILE")
         
         log_msg "✓" "\033[1;32m" "$target_name" "AUDIT" "Found $bug_count confirmed vulnerabilities!"
@@ -90,6 +135,53 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
     else
         log_msg "✓" "\033[1;32m" "$target_name" "AUDIT" "Clean. No critical bugs confirmed."
         rm -f "$AUDIT_FILE"
+    fi
+
+    # --- INTEGRASI AUTONOMOUS AI PENTESTER ---
+    # Dijalankan secara sinkron pada fase Audit sehingga output bisa langsung terlihat
+    if [[ "$USE_AI" == "y" || "$USE_AI" == "Y" ]]; then
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_msg "i" "\033[1;35m" "$target_name" "AI AGENT" "DRY-RUN aktif, analisis AI dilewati."
+            continue
+        fi
+
+        log_msg "🤖" "\033[1;35m" "$target_name" "AI AGENT" "Memulai Analisis AI Pentester..."
+        
+        # Cek apakah Ollama aktif sesuai konfigurasi terpusat
+        if ollama_check; then
+            if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-false}" == "1" ]]; then
+                ORCH_SCRIPT="$(dirname "$(dirname "$BASH_SOURCE")")/ai_rag_tool/ai_orchestrator_safe.sh"
+                chmod +x "$ORCH_SCRIPT" 2>/dev/null || true
+                log_msg "AI" "\033[1;35m" "$target_name" "ORCHESTRATOR" "Menjalankan discovery pasif (dorking, parameter, IDOR candidate)..."
+                bash "$ORCH_SCRIPT" --target "$target_name" --log-dir "$target_dir" >> "$target_dir/scan.log" 2>&1 || true
+            fi
+
+            # Menggunakan skrip BASH agar terhindar dari masalah modul Python!
+            AI_SCRIPT="$(dirname "$(dirname "$BASH_SOURCE")")/ai_rag_tool/autonomous_pentester.sh"
+            chmod +x "$AI_SCRIPT" 2>/dev/null || true
+            
+            # Kita gunakan file log target agar AI bisa menyimpan analisanya
+            TARGET_LOG="$target_dir/scan.log"
+            AI_RESULT_FILE="$target_dir/vulnerabilities/ai_recommendation.txt"
+            : > "$AI_RESULT_FILE"
+            echo -e "\n[🤖] Menyerahkan hasil scan ke AI Agent untuk dianalisis dan dieksploitasi..." | tee -a "$TARGET_LOG"
+            
+            # Eksekusi AI versi BASH dan tampilkan langsung di terminal sambil mencatat di log
+            bash "$AI_SCRIPT" \
+                --target "$target_name" \
+                --log-dir "$target_dir" \
+                --model "${OLLAMA_MODEL:-qwen2.5:0.5b}" \
+                --host "${OLLAMA_HOST:-http://localhost:11434}" | tee -a "$TARGET_LOG" "$AI_RESULT_FILE"
+
+            ai_exit=${PIPESTATUS[0]}
+            if [[ $ai_exit -eq 0 ]]; then
+                log_msg "🤖" "\033[1;35m" "$target_name" "AI AGENT" "Analisis AI selesai."
+            else
+                log_msg "!" "\033[1;31m" "$target_name" "AI AGENT" "Analisis AI gagal (exit $ai_exit). Periksa log AI."
+            fi
+        else
+            log_msg "!" "\033[1;31m" "$target_name" "AI AGENT" "Ollama tidak aktif (${OLLAMA_HOST:-http://localhost:11434}). AI dilewati."
+        fi
     fi
 done
 

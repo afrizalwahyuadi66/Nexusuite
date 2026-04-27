@@ -54,6 +54,7 @@ global_sigint_handler() {
     local options=()
     local pids=()
     local targets=()
+    local steps=()
     local target_safes=()
     
     for sfile in "$OUTPUT_BASE/.status/"*.active; do
@@ -64,6 +65,7 @@ global_sigint_handler() {
                 options+=("$tgt - $step")
                 pids+=("$cpid")
                 targets+=("$tgt")
+                steps+=("$step")
                 target_safes+=("$(basename "$sfile" .active)")
             fi
         fi
@@ -99,7 +101,7 @@ global_sigint_handler() {
                 if [[ "${targets[$i]}" == "$dom_choice" ]]; then
                     local selected_pid="${pids[$i]}"
                     local safe="${target_safes[$i]}"
-                    touch "$OUTPUT_BASE/.status/${safe}.skip_domain"
+                    printf '%s\n' "$dom_choice" > "$OUTPUT_BASE/.status/${safe}.skip_domain"
                     pkill -P "$selected_pid" 2>/dev/null || true
                     kill -9 "$selected_pid" 2>/dev/null || true
                 fi
@@ -110,7 +112,7 @@ global_sigint_handler() {
             if [[ "${options[$i]}" == "$choice" ]]; then
                 local selected_pid="${pids[$i]}"
                 local safe="${target_safes[$i]}"
-                touch "$OUTPUT_BASE/.status/${safe}.skip_tool"
+                printf '%s\n' "${steps[$i]}" > "$OUTPUT_BASE/.status/${safe}.skip_tool"
                 pkill -P "$selected_pid" 2>/dev/null || true
                 kill -9 "$selected_pid" 2>/dev/null || true
                 break

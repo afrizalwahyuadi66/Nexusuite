@@ -1,0 +1,27 @@
+# Nexusuite Risk Policy (safe-by-default)
+# Flat YAML keys are intentionally used for shell-friendly parsing.
+
+# Scope controls
+scope_allow_private_ranges: false
+scope_allow_localhost: false
+scope_allowlist:
+scope_blocklist:
+# Comma-separated domain suffixes to block (host ending with these suffixes)
+# Example: .internal,.corp,.lan,.local,home.arpa
+scope_blocked_suffixes: .internal,.corp,.lan,.local,home.arpa
+
+# Approval behavior
+approval_low: auto
+approval_medium: prompt_once
+approval_high: prompt_each
+
+# Command tiers (comma-separated tokens by binary name)
+tier_low_tokens: curl,httpx,wafw00f,nikto,searchsploit,gau,subfinder
+tier_medium_tokens: nmap,nuclei,ffuf,katana,arjun,paramspider
+tier_high_tokens: sqlmap,dalfox,wapiti
+
+# Any command containing these flags is blocked immediately
+blocked_flags: --os-shell,--sql-shell,--os-pwn,--file-write,--file-dest,msfconsole
+
+# Global request cooldown between network commands (seconds)
+global_request_cooldown_sec: 0.2

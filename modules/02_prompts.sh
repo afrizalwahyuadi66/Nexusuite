@@ -49,7 +49,29 @@ export PROXY_USED_FILE="$OUTPUT_BASE/proxies_used.txt"
 export PROXY_DEAD_FILE="$OUTPUT_BASE/proxies_dead.txt"
 touch "$PROXY_LIST_FILE" "$PROXY_USED_FILE" "$PROXY_DEAD_FILE"
 export USE_PROXY="false"
+export PROXY_STRICT="false"
+AI_AUTONOMOUS_MODE=false
+AI_REPLAY_MODE=false
+if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-false}" == "1" ]]; then
+    AI_AUTONOMOUS_MODE=true
+fi
+if [[ "${AI_REPLAY_FAILED_ONLY:-false}" == "true" || "${AI_REPLAY_FAILED_ONLY:-false}" == "1" ]]; then
+    AI_REPLAY_MODE=true
+fi
 
+write_mode_marker() {
+    local key="$1"
+    local val="$2"
+    if [[ -n "${LOG_FILE:-}" ]]; then
+        printf '[MODE] %s=%s\n' "$key" "$val" >> "$LOG_FILE"
+    fi
+}
+
+if [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
+    gum style --foreground 240 "AI Orchestrator aktif: default No Proxy."
+elif [[ "${DRY_RUN:-false}" == "true" ]]; then
+    gum style --foreground 240 "DRY-RUN aktif: proxy check dilewati."
+else
 while true; do
     PROXY_MODE=$(gum choose --header "Route traffic through Proxy?" "No Proxy" "Manual Input (Multiple comma-separated)" "From File")
     
@@ -109,6 +131,17 @@ while true; do
             ALIVE_COUNT=$(wc -l < "$PROXY_LIST_FILE" | tr -d ' ')
             gum style --margin "1 0" --foreground 46 "✅ $ALIVE_COUNT proxies are alive and ready to use."
             export USE_PROXY="true"
+
+            PROXY_POLICY=$(gum choose --header "Proxy routing policy:" \
+                "Best Effort (Recommended)" \
+                "Strict (Proxy-Only, skip unsupported steps)")
+            if [[ "$PROXY_POLICY" == "Strict (Proxy-Only, skip unsupported steps)" ]]; then
+                export PROXY_STRICT="true"
+                gum style --foreground 214 "Strict proxy aktif: step yang tidak punya integrasi proxy akan dilewati."
+            else
+                export PROXY_STRICT="false"
+                gum style --foreground 240 "Best effort aktif: jika proxy gagal/unsupported, step dapat fallback direct."
+            fi
             
             # Pick first proxy to use globally for initialization phase (subdomain enumeration)
             FIRST_PROXY=$(head -n 1 "$PROXY_LIST_FILE")
@@ -133,6 +166,7 @@ while true; do
         fi
     fi
 done
+fi
 
 # ==============================================================================
 # STEP 1: Target Selection
@@ -140,6 +174,16 @@ done
 export FULL_AUTO_MODE=false
 TARGETS_FILE=$(mktemp)
 add_cleanup 'rm -f "$TARGETS_FILE"; rm -rf "$TMP_ENUM_DIR"'
+
+load_replay_targets() {
+    local replay_file="${AI_REPLAY_SOURCE_FILE:-}"
+    if [[ -z "$replay_file" ]]; then
+        replay_file="$OUTPUT_BASE/failed_tasks.txt"
+    fi
+    [[ -f "$replay_file" ]] || return 1
+    awk -F'[][]' '/^\[/{print $2}' "$replay_file" | awk '{print $1}' | sed '/^$/d' | sort -u > "$TARGETS_FILE"
+    [[ -s "$TARGETS_FILE" ]]
+}
 
 if [[ "$IS_RESUME" == "true" && -f "$OUTPUT_BASE/all_targets.txt" ]]; then
     # Resume mode
@@ -155,14 +199,43 @@ if [[ "$IS_RESUME" == "true" && -f "$OUTPUT_BASE/all_targets.txt" ]]; then
         exit 0
     fi
 else
-    MODE=$(gum choose \
-        --header "Select target mode:" --cursor "→ " \
-        "Single Domain" \
-        "Massive Scan from File" \
-        "Enumerate & Choose Subdomains" \
-        "Full Automation (Single Domain → All Subdomains)")
+    if [[ "$AI_REPLAY_MODE" == "true" ]] && load_replay_targets; then
+        MODE="Replay Failed Targets"
+        WORKFLOW="Standard (Recommended)"
+        FULL_AUTO_MODE=false
+        gum style --foreground 46 "Replay mode aktif: hanya target gagal yang dijalankan ulang."
+    elif [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
+        MODE="AI Orchestrator"
+        WORKFLOW="Standard (Recommended)"
+        if [[ -n "${AI_AUTONOMOUS_TARGETS_FILE:-}" ]]; then
+            if [[ ! -f "${AI_AUTONOMOUS_TARGETS_FILE}" ]]; then
+                gum log --level error "AI_AUTONOMOUS_TARGETS_FILE tidak ditemukan: ${AI_AUTONOMOUS_TARGETS_FILE}"
+                exit 1
+            fi
+            cp "${AI_AUTONOMOUS_TARGETS_FILE}" "$TARGETS_FILE"
+        elif [[ -n "${AI_AUTONOMOUS_TARGETS:-}" ]]; then
+            echo "${AI_AUTONOMOUS_TARGETS}" | tr ', ' '\n\n' | sed '/^$/d' | sort -u > "$TARGETS_FILE"
+        else
+            gum log --level error "Mode AI Orchestrator aktif, tapi target kosong. Isi AI_AUTONOMOUS_TARGETS atau AI_AUTONOMOUS_TARGETS_FILE."
+            exit 1
+        fi
+        FULL_AUTO_MODE=false
+        gum style --foreground 46 "AI Orchestrator: target dimuat otomatis."
+    elif [[ "${DRY_RUN:-false}" == "true" ]]; then
+        MODE="Single Domain"
+        DOMAIN=$(gum input --placeholder "example.com" --prompt "DRY-RUN target domain: ")
+        echo "$DOMAIN" > "$TARGETS_FILE"
+        WORKFLOW="Standard (Recommended)"
+        gum style --foreground 240 "DRY-RUN aktif: mode target disederhanakan ke Single Domain."
+    else
+        MODE=$(gum choose \
+            --header "Select target mode:" --cursor "→ " \
+            "Single Domain" \
+            "Massive Scan from File" \
+            "Enumerate & Choose Subdomains" \
+            "Full Automation (Single Domain → All Subdomains)")
 
-    case "$MODE" in
+        case "$MODE" in
     "Single Domain")
         DOMAIN=$(gum input --placeholder "example.com" --prompt "Enter domain: ")
         echo "$DOMAIN" > "$TARGETS_FILE"
@@ -253,6 +326,7 @@ else
             "Custom (Choose tools manually)")
         ;;
 esac
+    fi
     
     # Save state for future resume
     cp "$TARGETS_FILE" "$OUTPUT_BASE/all_targets.txt"
@@ -262,6 +336,12 @@ esac
 fi
 
 TOTAL_TARGETS=$(wc -l < "$TARGETS_FILE" | tr -d ' ')
+
+write_mode_marker "AI_ORCHESTRATOR_MODE" "$AI_AUTONOMOUS_MODE"
+write_mode_marker "REPLAY_FAILED_ONLY" "$AI_REPLAY_MODE"
+write_mode_marker "SCAN_MODE" "${MODE:-unknown}"
+write_mode_marker "WORKFLOW" "${WORKFLOW:-unknown}"
+write_mode_marker "TOTAL_TARGETS" "$TOTAL_TARGETS"
 
 # === Membangun List Target Aktif ===
 gum style --margin "1 0" --foreground 212 "## 📋 Selected Targets ($TOTAL_TARGETS active domains)"
@@ -286,6 +366,27 @@ if [[ "$IS_RESUME" == "true" && -f "$OUTPUT_BASE/config.sh" ]]; then
     gum format -- "Resumed tools: $(echo $SELECTED_TOOLS | sed 's/^/ /')"
     gum format -- "Resumed Nmap Args: $NMAP_ARGS"
     gum format -- "Resumed SQLMap Args: $SQLMAP_ARGS"
+elif [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
+    SELECTED_TOOLS="subfinder httpx nmap gau katana paramspider arjun nuclei dalfox wapiti sqlmap nikto ffuf wafw00f"
+    FINAL_TOOLS=""
+    for tool in $SELECTED_TOOLS; do
+        check_tool "$tool" && FINAL_TOOLS="$FINAL_TOOLS $tool"
+    done
+    export SELECTED_TOOLS="$FINAL_TOOLS"
+    export NMAP_ARGS="${AI_AUTONOMOUS_NMAP_ARGS:--sV -sC --script=vuln,ssl-enum-ciphers}"
+    export SQLMAP_ARGS="${AI_AUTONOMOUS_SQLMAP_ARGS:---random-agent --batch --level=1 --risk=1}"
+    export SCAN_SPEED="${AI_AUTONOMOUS_SCAN_SPEED:-Normal (Balanced)}"
+    export CONCURRENCY="${AI_AUTONOMOUS_CONCURRENCY:-3}"
+    export OUTPUT_MODE="${AI_AUTONOMOUS_OUTPUT_MODE:-Silent (Status only)}"
+    {
+        echo "export SELECTED_TOOLS=\"$SELECTED_TOOLS\""
+        echo "export NMAP_ARGS=\"$NMAP_ARGS\""
+        echo "export SQLMAP_ARGS=\"$SQLMAP_ARGS\""
+        echo "export CONCURRENCY=\"$CONCURRENCY\""
+        echo "export OUTPUT_MODE=\"$OUTPUT_MODE\""
+        echo "export SCAN_SPEED=\"$SCAN_SPEED\""
+    } > "$OUTPUT_BASE/config.sh"
+    gum style --foreground 46 "AI Orchestrator: konfigurasi tools dipilih otomatis."
 else
     if [[ "$WORKFLOW" == "Standard"* ]]; then
         SELECTED_TOOLS="subfinder httpx nmap gau katana paramspider arjun nuclei dalfox wapiti sqlmap nikto ffuf wafw00f"
@@ -378,4 +479,18 @@ else
     } > "$OUTPUT_BASE/config.sh"
 fi
 
-gum confirm "Start scanning with above configuration?" || exit 0
+write_mode_marker "CONCURRENCY" "${CONCURRENCY:-unknown}"
+write_mode_marker "OUTPUT_MODE" "${OUTPUT_MODE:-unknown}"
+write_mode_marker "SCAN_SPEED" "${SCAN_SPEED:-unknown}"
+write_mode_marker "TOOLS_COUNT" "$(echo "${SELECTED_TOOLS:-}" | wc -w | tr -d ' ')"
+if declare -F write_state_snapshot >/dev/null 2>&1; then
+    write_state_snapshot
+fi
+
+if [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
+    write_mode_marker "START_MODE" "auto"
+    gum style --foreground 46 "AI Orchestrator: memulai scanning otomatis."
+else
+    write_mode_marker "START_MODE" "manual_confirm"
+    gum confirm "Start scanning with above configuration?" || exit 0
+fi

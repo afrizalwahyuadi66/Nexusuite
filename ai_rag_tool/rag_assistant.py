@@ -13,10 +13,27 @@ except ImportError:
 # atau jika ingin Vector DB beneran, bisa pakai sentence-transformers.
 # Demi "sangat ringan" dan tanpa instalasi berat di awal, kita mulai dengan pencocokan pintar.
 import difflib
+from ai_config import get_ai_settings
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'exploit_db_real.json')
-OLLAMA_API = "http://localhost:11434/api/generate"
-MODEL_NAME = "qwen2:0.5b" # Model yang sangat ringan (~300MB) atau gemma:2b / llama3.2:1b
+AI_SETTINGS = get_ai_settings()
+OLLAMA_API = AI_SETTINGS["generate_api"]
+MODEL_NAME = AI_SETTINGS["model"]
+AI_TIMEOUT = AI_SETTINGS["timeout"]
+OLLAMA_TAGS_API = AI_SETTINGS["tags_api"]
+
+def check_ollama_status():
+    """Mengecek apakah server Ollama sedang berjalan."""
+    try:
+        # Endpoint dasar Ollama
+        res = requests.get(OLLAMA_TAGS_API, timeout=2)
+        if res.status_code == 200:
+            print("[+] Status AI (Ollama): AKTIF")
+            return True
+    except requests.exceptions.RequestException:
+        pass
+    print("[-] Status AI (Ollama): NON-AKTIF (Berjalan di Mode Fallback)")
+    return False
 
 def load_db():
     if not os.path.exists(DB_PATH):
@@ -76,14 +93,14 @@ Jawabanmu harus berisi saran payload yang bisa langsung dijalankan di terminal:"
             "model": MODEL_NAME,
             "prompt": prompt,
             "stream": False
-        }, timeout=10)
+        }, timeout=AI_TIMEOUT)
         
         if response.status_code == 200:
             return response.json().get("response", "")
         else:
             return f"[-] Error dari Ollama: {response.text}"
     except requests.exceptions.ConnectionError:
-        print("[-] Tidak dapat terhubung ke Ollama. Pastikan Ollama berjalan (http://localhost:11434).")
+        print(f"[-] Tidak dapat terhubung ke Ollama. Pastikan Ollama berjalan ({AI_SETTINGS['host']}).")
         print("[-] Fallback: Menampilkan raw context dari database RAG lokal...\n")
         
         # Fallback jika tidak ada LLM: Cukup berikan data dari Retrieval
@@ -95,12 +112,16 @@ Jawabanmu harus berisi saran payload yang bisa langsung dijalankan di terminal:"
         return fallback_msg
 
 def main():
+    global MODEL_NAME
+    print("="*50)
+    check_ollama_status()
+    print("="*50)
+
     parser = argparse.ArgumentParser(description="AI RAG Pentest Assistant (Lightweight)")
     parser.add_argument("-q", "--query", type=str, required=True, help="Input dari hasil scan (misal: 'Apache 2.4.49')")
     parser.add_argument("-m", "--model", type=str, default=MODEL_NAME, help="Model Ollama yang digunakan (default: qwen2:0.5b)")
     args = parser.parse_args()
 
-    global MODEL_NAME
     MODEL_NAME = args.model
 
     # 1. RETRIEVAL

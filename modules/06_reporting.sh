@@ -220,6 +220,179 @@ if [[ -s "$FFUF_SUMMARY" ]]; then
     cat "$FFUF_SUMMARY" >> "$REPORT_DIR/full_report.txt"
 fi
 
+# 11. AI Recommendations
+write_section "AI RECOMMENDATIONS"
+AI_RECOMMENDATIONS="$REPORT_DIR/ai_recommendations.txt"
+: > "$AI_RECOMMENDATIONS"
+find "$OUTPUT_BASE/targets" -name "ai_recommendation.txt" -type f 2>/dev/null | while read -r afile; do
+    domain_name=$(get_domain "$afile")
+    if [[ -s "$afile" ]]; then
+        echo "--- $domain_name ---" >> "$AI_RECOMMENDATIONS"
+        cat "$afile" >> "$AI_RECOMMENDATIONS"
+        echo "" >> "$AI_RECOMMENDATIONS"
+    fi
+done
+if [[ -s "$AI_RECOMMENDATIONS" ]]; then
+    echo "AI recommendations generated for $(grep -c '^--- ' "$AI_RECOMMENDATIONS") target(s)." | tee -a "$REPORT_DIR/full_report.txt"
+    cat "$AI_RECOMMENDATIONS" >> "$REPORT_DIR/full_report.txt"
+else
+    echo "No AI recommendation output available." >> "$REPORT_DIR/full_report.txt"
+fi
+
+# 11.5 Confidence Scoring & Dedup
+write_section "CONFIDENCE-SCORED FINDINGS"
+SCORED_SUMMARY="$REPORT_DIR/scored_findings_summary.tsv"
+DEDUP_SUMMARY="$REPORT_DIR/dedup_findings_summary.txt"
+: > "$SCORED_SUMMARY"
+: > "$DEDUP_SUMMARY"
+echo -e "target\tscore\tsource\tfinding" >> "$SCORED_SUMMARY"
+find "$OUTPUT_BASE/targets" -name "scored_findings.tsv" -type f 2>/dev/null | while read -r sfile; do
+    domain_name=$(get_domain "$sfile")
+    awk -F'\t' -v t="$domain_name" 'NR>1 {print t "\t" $0}' "$sfile" >> "$SCORED_SUMMARY"
+done
+if [[ -s "$SCORED_SUMMARY" ]]; then
+    tmp_scored="$(mktemp)"
+    {
+        head -n 1 "$SCORED_SUMMARY"
+        tail -n +2 "$SCORED_SUMMARY" | sort -t$'\t' -k2,2nr
+    } > "$tmp_scored"
+    mv "$tmp_scored" "$SCORED_SUMMARY"
+    cat "$SCORED_SUMMARY" >> "$REPORT_DIR/full_report.txt"
+fi
+find "$OUTPUT_BASE/targets" -name "dedup_findings.txt" -type f 2>/dev/null | while read -r dfile; do
+    domain_name=$(get_domain "$dfile")
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        echo "[$domain_name] $line"
+    done < "$dfile"
+done | sort -u > "$DEDUP_SUMMARY"
+if [[ -s "$DEDUP_SUMMARY" ]]; then
+    write_section "DEDUPLICATED FINDINGS"
+    cat "$DEDUP_SUMMARY" >> "$REPORT_DIR/full_report.txt"
+fi
+
+# 11.6 Baseline Profiling
+write_section "BASELINE RESPONSE PROFILE"
+BASELINE_SUMMARY="$REPORT_DIR/baseline_profiles.tsv"
+: > "$BASELINE_SUMMARY"
+echo -e "target\turl\tstatus\tserver\tcontent_type\tbody_sha256" >> "$BASELINE_SUMMARY"
+find "$OUTPUT_BASE/targets" -name "baseline_profile.tsv" -type f 2>/dev/null | while read -r bfile; do
+    domain_name=$(get_domain "$bfile")
+    awk -F'\t' -v t="$domain_name" 'NR>1 {print t "\t" $0}' "$bfile" >> "$BASELINE_SUMMARY"
+done
+if [[ -s "$BASELINE_SUMMARY" ]]; then
+    cat "$BASELINE_SUMMARY" >> "$REPORT_DIR/full_report.txt"
+fi
+
+# 11.7 AI Decision Timeline (raw)
+write_section "AI DECISION TIMELINE"
+AI_TIMELINE_TXT="$REPORT_DIR/ai_timeline.txt"
+: > "$AI_TIMELINE_TXT"
+find "$OUTPUT_BASE/targets" -name "ai_decisions.log" -type f 2>/dev/null | while read -r tfile; do
+    domain_name=$(get_domain "$tfile")
+    echo "--- $domain_name ---" >> "$AI_TIMELINE_TXT"
+    cat "$tfile" >> "$AI_TIMELINE_TXT"
+    echo "" >> "$AI_TIMELINE_TXT"
+done
+if [[ -s "$AI_TIMELINE_TXT" ]]; then
+    cat "$AI_TIMELINE_TXT" >> "$REPORT_DIR/full_report.txt"
+fi
+
+# 12. Proxy Routing Audit
+write_section "PROXY ROUTING AUDIT"
+PROXY_AUDIT_SUMMARY="$REPORT_DIR/proxy_routing_summary.txt"
+: > "$PROXY_AUDIT_SUMMARY"
+find "$OUTPUT_BASE/targets" -name "proxy_report.txt" -type f 2>/dev/null | while read -r pfile; do
+    domain_name=$(get_domain "$pfile")
+    if [[ -s "$pfile" ]]; then
+        echo "--- $domain_name ---" >> "$PROXY_AUDIT_SUMMARY"
+        cat "$pfile" >> "$PROXY_AUDIT_SUMMARY"
+        echo "" >> "$PROXY_AUDIT_SUMMARY"
+    fi
+done
+if [[ -s "$PROXY_AUDIT_SUMMARY" ]]; then
+    echo "Proxy routing audit generated for $(grep -c '^--- ' "$PROXY_AUDIT_SUMMARY") target(s)." | tee -a "$REPORT_DIR/full_report.txt"
+    cat "$PROXY_AUDIT_SUMMARY" >> "$REPORT_DIR/full_report.txt"
+else
+    echo "No proxy routing audit output available." >> "$REPORT_DIR/full_report.txt"
+fi
+
+# 13. Output Navigator (human-readable path map)
+OUTPUT_NAV_FILE="$OUTPUT_BASE/README_OUTPUT.txt"
+TARGETS_NAV_FILE="$REPORT_DIR/targets_navigator.txt"
+FILE_MAP_CSV="$REPORT_DIR/file_map.csv"
+
+{
+    echo "target,key,path,status"
+} > "$FILE_MAP_CSV"
+
+{
+    echo "TARGETS NAVIGATOR"
+    echo "================="
+    echo "Generated: $(date)"
+    echo ""
+} > "$TARGETS_NAV_FILE"
+
+for target_dir in "$OUTPUT_BASE/targets/"*; do
+    [[ -d "$target_dir" ]] || continue
+    domain_name=$(basename "$target_dir")
+    {
+        echo "[$domain_name]"
+        [[ -f "$target_dir/README_TARGET.txt" ]] && echo "- Navigator          : targets/$domain_name/README_TARGET.txt"
+        [[ -f "$target_dir/recon/alive.txt" ]] && echo "- Alive Hosts        : targets/$domain_name/recon/alive.txt"
+        [[ -f "$target_dir/recon/all_urls.txt" ]] && echo "- All URLs           : targets/$domain_name/recon/all_urls.txt"
+        [[ -f "$target_dir/vulnerabilities/nuclei.txt" ]] && echo "- Nuclei             : targets/$domain_name/vulnerabilities/nuclei.txt"
+        [[ -f "$target_dir/vulnerabilities/xss.txt" ]] && echo "- Dalfox XSS         : targets/$domain_name/vulnerabilities/xss.txt"
+        [[ -f "$target_dir/proxy_report.txt" ]] && echo "- Proxy Audit        : targets/$domain_name/proxy_report.txt"
+        [[ -f "$target_dir/scan.log" ]] && echo "- Scan Log           : targets/$domain_name/scan.log"
+        echo ""
+    } >> "$TARGETS_NAV_FILE"
+
+    for item in \
+        "navigator|$target_dir/README_TARGET.txt" \
+        "alive_hosts|$target_dir/recon/alive.txt" \
+        "all_urls|$target_dir/recon/all_urls.txt" \
+        "nuclei|$target_dir/vulnerabilities/nuclei.txt" \
+        "xss|$target_dir/vulnerabilities/xss.txt" \
+        "proxy_audit|$target_dir/proxy_report.txt" \
+        "scan_log|$target_dir/scan.log"; do
+        key="${item%%|*}"
+        path_abs="${item#*|}"
+        path_rel="${path_abs#$OUTPUT_BASE/}"
+        if [[ -f "$path_abs" ]]; then
+            echo "$domain_name,$key,$path_rel,available" >> "$FILE_MAP_CSV"
+        else
+            echo "$domain_name,$key,$path_rel,missing" >> "$FILE_MAP_CSV"
+        fi
+    done
+done
+
+{
+    echo "NEXUSUITE OUTPUT NAVIGATOR"
+    echo "=========================="
+    echo "Generated      : $(date)"
+    echo "Session Folder : $OUTPUT_BASE"
+    echo ""
+    echo "[Start Here]"
+    echo "- Main Summary (Text)  : report/full_report.txt"
+    echo "- Dashboard (HTML)     : report/index.html"
+    echo "- Findings Snapshot    : report/interesting_urls.txt"
+    echo ""
+    echo "[Audit & Intelligence]"
+    echo "- Proxy Audit Summary  : report/proxy_routing_summary.txt"
+    echo "- AI Recommendations   : report/ai_recommendations.txt"
+    echo ""
+    echo "[Target Navigation]"
+    echo "- Per-target quick map : report/targets_navigator.txt"
+    echo "- Machine-readable map : report/file_map.csv"
+    echo "- Per-target readme    : targets/<target>/README_TARGET.txt"
+    echo ""
+    echo "[Runtime]"
+    echo "- Global log           : scan.log"
+    echo "- Failed tasks         : failed_tasks.txt"
+    echo "- Completed targets    : completed_targets.txt"
+} > "$OUTPUT_NAV_FILE"
+
 # --- Summary ---
 gum format -- "## ✅ Report saved to: \`$REPORT_DIR\`"
 if [[ -f "$OUTPUT_BASE/all_subdomains.txt" ]]; then
@@ -243,7 +416,10 @@ gum style --margin "1 0" --foreground 240 "$(cat <<EOF
 - Nuclei (M/H/C): $(wc -l < "$NUCLEI_FINDINGS" 2>/dev/null || echo 0) issues
 - XSS: $(grep -c "---" "$DALFOX_FINDINGS" 2>/dev/null || echo 0) domain(s) affected
 - Nmap vulns: $(wc -l < "$NMAP_VULN" 2>/dev/null || echo 0) findings
+- AI Recommendations: $(grep -c "^---" "$AI_RECOMMENDATIONS" 2>/dev/null || echo 0) target(s)
+- Proxy Audit: $(grep -c "^---" "$PROXY_AUDIT_SUMMARY" 2>/dev/null || echo 0) target(s)
 - Confirmed/Audited Bugs: ${TOTAL_CONFIRMED_BUGS:-0}
+- Output Navigator: README_OUTPUT.txt + report/targets_navigator.txt
 EOF
 )"
 
@@ -297,6 +473,7 @@ gum format -- "# 📁 Results saved in: \`$OUTPUT_BASE\`"
 gum format -- "- Batch summary: \`batch_summary.txt\`"
 gum format -- "- Report directory: \`$REPORT_DIR\`"
 gum format -- "- HTML Dashboard: \`$REPORT_DIR/index.html\`"
+gum format -- "- Output Navigator: \`$OUTPUT_NAV_FILE\`"
 
 if command -v tree &> /dev/null; then
     gum style --foreground 240 "$(tree -L 2 "$OUTPUT_BASE" | head -n 20)"

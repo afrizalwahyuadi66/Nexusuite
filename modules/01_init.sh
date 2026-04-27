@@ -114,10 +114,16 @@ declare -A TOOL_DESC=(
 )
 
 # --- Header ---
+# Mengecek status Ollama secara diam-diam untuk header
+AI_STATUS_TEXT="🤖 AI Agent: NON-AKTIF"
+if command -v curl &> /dev/null && curl -s -m 1 http://localhost:11434/ > /dev/null; then
+    AI_STATUS_TEXT="🤖 AI Agent: AKTIF (Ready)"
+fi
+
 gum style \
     --border double --align center --width 70 --margin "1" --padding "1 2" \
     --foreground 46 --border-foreground 46 \
-    "$SCRIPT_NAME v$VERSION" "Professional Web & Network Vulnerability Scanner" "🤖 AI-Assisted Exploitation Ready"
+    "$SCRIPT_NAME v$VERSION" "Professional Web & Network Vulnerability Scanner" "$AI_STATUS_TEXT"
 
 # --- Temporary variables for Output Directory ---
 # Will be initialized in 02_prompts.sh after checking for resume
