@@ -247,6 +247,13 @@ if [[ -f "$REPORT_DIR/proxy_routing_summary.txt" ]] && [[ -s "$REPORT_DIR/proxy_
     echo "</pre></div></div>" >> "$HTML_FILE"
 fi
 
+# AI Terminal Overlord Log
+if [[ -f "$REPORT_DIR/ai_overlord_terminal.log" ]] && [[ -s "$REPORT_DIR/ai_overlord_terminal.log" ]]; then
+    echo "<div class='card critical'><div class='card-header'>☢️ AI Terminal Overlord Log (Fase 4)</div><div class='card-body'><pre style='color:#0f0; background:#000; font-family:monospace;'>" >> "$HTML_FILE"
+    awk 'NR<=500 {gsub(/&/,"\&amp;"); gsub(/</,"\&lt;"); gsub(/>/,"\&gt;"); print}' "$REPORT_DIR/ai_overlord_terminal.log" >> "$HTML_FILE"
+    echo "</pre></div></div>" >> "$HTML_FILE"
+fi
+
 # Footer
 cat << 'EOF' >> "$HTML_FILE"
     </div>

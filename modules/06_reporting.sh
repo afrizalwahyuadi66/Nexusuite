@@ -338,7 +338,7 @@ if [[ -s "$BASELINE_SUMMARY" ]]; then
     cat "$BASELINE_SUMMARY" >> "$REPORT_DIR/full_report.txt"
 fi
 
-# 11.7 AI Decision Timeline (raw)
+# 11.4 AI Decision Timeline
 write_section "AI DECISION TIMELINE"
 AI_TIMELINE_TXT="$REPORT_DIR/ai_timeline.txt"
 : > "$AI_TIMELINE_TXT"
@@ -350,6 +350,24 @@ find "$OUTPUT_BASE/targets" -name "ai_decisions.log" -type f 2>/dev/null | while
 done
 if [[ -s "$AI_TIMELINE_TXT" ]]; then
     cat "$AI_TIMELINE_TXT" >> "$REPORT_DIR/full_report.txt"
+fi
+
+# 11.5 AI Terminal Overlord Log
+write_section "AI TERMINAL OVERLORD LOG (Fase 4)"
+AI_OVERLORD_TXT="$REPORT_DIR/ai_overlord_terminal.log"
+: > "$AI_OVERLORD_TXT"
+find "$OUTPUT_BASE/targets" -name "ai_overlord_terminal.log" -type f 2>/dev/null | while read -r ofile; do
+    domain_name=$(get_domain "$ofile")
+    if [[ -s "$ofile" ]]; then
+        echo "--- $domain_name ---" >> "$AI_OVERLORD_TXT"
+        # Menghapus escape code ANSI agar laporan teks tetap bersih
+        sed -r "s/\x1B\[[0-9;]*[mK]//g" "$ofile" >> "$AI_OVERLORD_TXT"
+        echo "" >> "$AI_OVERLORD_TXT"
+    fi
+done
+if [[ -s "$AI_OVERLORD_TXT" ]]; then
+    echo "AI Overlord log generated for $(grep -c '^--- ' "$AI_OVERLORD_TXT") target(s)." | tee -a "$REPORT_DIR/full_report.txt"
+    cat "$AI_OVERLORD_TXT" >> "$REPORT_DIR/full_report.txt"
 fi
 
 # 12. Proxy Routing Audit

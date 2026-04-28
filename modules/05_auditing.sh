@@ -199,6 +199,17 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
             else
                 log_msg "!" "\033[1;31m" "$target_name" "AI AGENT" "Analisis AI gagal (exit $ai_exit). Periksa log AI."
             fi
+
+            # --- FASE 4: AI TERMINAL OVERLORD (EXPLOSIVE DYNAMIC CONTROL) ---
+            if [[ "${AI_ENABLE_OVERLORD:-false}" == "true" || "${AI_ENABLE_OVERLORD:-false}" == "1" ]]; then
+                log_msg "🔥" "\033[1;31m" "$target_name" "OVERLORD" "Memasuki Fase 4: AI Terminal Overlord (Kontrol Penuh Dinamis)!"
+                OVERLORD_SCRIPT="$(dirname "$(dirname "$BASH_SOURCE")")/ai_rag_tool/ai_terminal_overlord.sh"
+                chmod +x "$OVERLORD_SCRIPT" 2>/dev/null || true
+                
+                # Biarkan AI Overlord mengambil alih terminal sementara waktu
+                bash "$OVERLORD_SCRIPT" --target "$target_name" --log-dir "$target_dir" || true
+                log_msg "🏁" "\033[1;32m" "$target_name" "OVERLORD" "Fase 4: Overlord selesai. Menyerahkan kembali kendali ke sistem."
+            fi
         else
             log_msg "!" "\033[1;31m" "$target_name" "AI AGENT" "Ollama tidak aktif (${OLLAMA_HOST:-http://localhost:11434}). AI dilewati."
         fi

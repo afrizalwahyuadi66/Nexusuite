@@ -367,6 +367,33 @@ esac
     echo "$WORKFLOW" > "$OUTPUT_BASE/workflow.txt"
 fi
 
+# ==============================================================================
+# Rename Directory to Result/NamaDomain_SCAN_XXXX_XXXX
+# ==============================================================================
+if [[ "$IS_RESUME" == "false" && -s "$TARGETS_FILE" ]]; then
+    # Ambil target pertama sebagai nama utama
+    MAIN_TARGET=$(head -n 1 "$TARGETS_FILE" | tr -d '\r')
+    # Hilangkan http:// atau https://
+    MAIN_TARGET_DOMAIN=$(echo "$MAIN_TARGET" | sed -e 's|^https*://||' -e 's|/.*||')
+    # Buat string aman untuk nama folder
+    MAIN_TARGET_SAFE=$(echo "$MAIN_TARGET_DOMAIN" | sed 's/[^a-zA-Z0-9.-]/_/g')
+    
+    # Format akhir: Result/NamaDomain_SCAN_XXXX_XXXX
+    FINAL_OUTPUT_BASE="Result/${MAIN_TARGET_SAFE}_${NEW_OUTPUT_BASE}"
+    
+    mkdir -p "Result"
+    if [[ -d "$OUTPUT_BASE" ]]; then
+        mv "$OUTPUT_BASE" "$FINAL_OUTPUT_BASE"
+    fi
+    export OUTPUT_BASE="$FINAL_OUTPUT_BASE"
+    export LOG_FILE="$OUTPUT_BASE/scan.log"
+    export TMP_ENUM_DIR="$OUTPUT_BASE/.enum_tmp"
+    export COMPLETED_FILE="$OUTPUT_BASE/completed_targets.txt"
+    export PROXY_LIST_FILE="$OUTPUT_BASE/proxies_active.txt"
+    export PROXY_USED_FILE="$OUTPUT_BASE/proxies_used.txt"
+    export PROXY_DEAD_FILE="$OUTPUT_BASE/proxies_dead.txt"
+fi
+
 TOTAL_TARGETS=$(wc -l < "$TARGETS_FILE" | tr -d ' ')
 
 write_mode_marker "AI_ORCHESTRATOR_MODE" "$AI_AUTONOMOUS_MODE"

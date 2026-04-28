@@ -30,7 +30,10 @@ add_cleanup 'rm -f "$SIGINT_LOCK_FILE"'
 process_target() {
     local TARGET="$1"
     [[ -z "$TARGET" ]] && return 0
-    local TARGET_SAFE=$(echo "$TARGET" | sed 's/[^a-zA-Z0-9.-]/_/g')
+    # Hilangkan http:// atau https:// dan slash di akhir untuk mendapatkan domain murni
+    local TARGET_DOMAIN=$(echo "$TARGET" | sed -e 's|^https*://||' -e 's|/.*||')
+    # Jadikan aman untuk nama folder
+    local TARGET_SAFE=$(echo "$TARGET_DOMAIN" | sed 's/[^a-zA-Z0-9.-]/_/g')
 
     local TARGET_DIR="$OUTPUT_BASE/targets/$TARGET_SAFE"
     mkdir -p "$TARGET_DIR"/{recon,vulnerabilities,scans}

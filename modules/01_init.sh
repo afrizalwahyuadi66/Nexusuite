@@ -70,25 +70,30 @@ log_msg() {
     local time_now=$(date +%H:%M:%S)
     
     # Modern icons based on status
-    local icon="•"
+    local icon="⚡"
+    local bg_color="\033[40m" # Default background
+    
     case "$stat" in
-        ">") icon="▶" ;;
-        "✓") icon="✔" ;;
-        "!") icon="✖" ;;
-        "↻") icon="⟳" ;;
-        "i") icon="ℹ" ;;
-        "+") icon="➕" ;;
+        ">") icon="🚀" ; bg_color="\033[44m" ;;
+        "✓") icon="✅" ; bg_color="\033[42m" ;;
+        "!") icon="❌" ; bg_color="\033[41m" ;;
+        "↻") icon="🔄" ; bg_color="\033[43m" ;;
+        "i") icon="💡" ; bg_color="\033[46m" ;;
+        "+") icon="➕" ; bg_color="\033[45m" ;;
+        "🤖"|"AI") icon="🧠" ; bg_color="\033[45m" ;;
+        "🔥"|"OVERLORD") icon="☢️" ; bg_color="\033[41m" ;;
+        "🏁") icon="🏆" ; bg_color="\033[42m" ;;
     esac
     
-    # Print according to OUTPUT_MODE
+    # Print according to OUTPUT_MODE dengan gaya Cyberpunk / Hacker yang lebih bold
     if [[ "${OUTPUT_MODE:-}" == "Verbose"* ]]; then
-        # Modern, neat, aligned columns without any tables
-        printf "\033[1;30m[%s]\033[0m %b%s\033[0m %-30.30s \033[1;30m::\033[0m \033[1;36m%-15.15s\033[0m \033[1;30m➔\033[0m %b%s\033[0m\n" \
-            "$time_now" "$color" "$icon" "$target" "$tool" "$color" "$msg"
+        # Modern, neat, aligned columns dengan highlight tag
+        printf "\033[1;90m[%s]\033[0m %b\033[1;97m %s \033[0m \033[1;36m%-25.25s\033[0m \033[1;90m| \033[1;35m%-14.14s\033[1;90m | \033[0m%b%s\033[0m\n" \
+            "$time_now" "$bg_color" "$icon" "$target" "$tool" "$color" "$msg"
     else
-        # Minimal and clean for silent mode
-        printf "\033[1;30m[%s]\033[0m %b%s\033[0m %s \033[1;30m➔\033[0m \033[1;36m%s\033[0m \033[1;30m::\033[0m %b%s\033[0m\n" \
-            "$time_now" "$color" "$icon" "$target" "$tool" "$color" "$msg"
+        # Minimalist tapi tetap striking
+        printf "\033[1;90m[%s]\033[0m %b\033[1;97m %s \033[0m \033[1;36m%s\033[0m \033[1;90m»\033[0m \033[1;35m%s\033[0m \033[1;90m:\033[0m %b%s\033[0m\n" \
+            "$time_now" "$bg_color" "$icon" "$target" "$tool" "$color" "$msg"
     fi
     
     # Log to global scan log
@@ -126,5 +131,5 @@ gum style \
     "$SCRIPT_NAME v$VERSION" "Professional Web & Network Vulnerability Scanner" "$AI_STATUS_TEXT"
 
 # --- Temporary variables for Output Directory ---
-# Will be initialized in 02_prompts.sh after checking for resume
-export NEW_OUTPUT_BASE="OWASP_SCAN_$(date +%Y%m%d_%H%M%S)"
+# Output Base di-set awalnya hanya dengan timestamp. Nama domain akan ditambahkan nanti di 02_prompts.sh
+export NEW_OUTPUT_BASE="SCAN_$(date +%Y%m%d_%H%M%S)"

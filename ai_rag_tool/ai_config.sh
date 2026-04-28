@@ -65,6 +65,8 @@ export AI_PROXY_FOR_INTEL="${AI_PROXY_FOR_INTEL:-false}"
 export AI_DORK_USE_PROXY="${AI_DORK_USE_PROXY:-false}"
 export AI_AGGRESSIVE_MODE="${AI_AGGRESSIVE_MODE:-false}"
 export AI_AGGRESSIVE_LEVEL="${AI_AGGRESSIVE_LEVEL:-1}"
+export AI_ENABLE_OVERLORD="${AI_ENABLE_OVERLORD:-false}"
+export AI_OVERLORD_MAX_ITERATIONS="${AI_OVERLORD_MAX_ITERATIONS:-5}"
 export AI_RISK_POLICY_FILE="${AI_RISK_POLICY_FILE:-$_AI_POLICY_FILE_DEFAULT}"
 export AI_REPLAY_FAILED_ONLY="${AI_REPLAY_FAILED_ONLY:-false}"
 export AI_REPLAY_SOURCE_FILE="${AI_REPLAY_SOURCE_FILE:-}"
@@ -123,8 +125,19 @@ clean_json_response() {
         /<\/think>/ { in_think=0; next }
         !in_think { print }
     ')
-    # Ekstrak hanya blok JSON pertama yang valid
-    printf '%s' "$no_think" | sed -n '/{/,/}/p'
+    # Ekstrak hanya blok JSON pertama yang valid. Bisa menangani kasus di mana ada text sebelum/sesudah JSON
+    printf '%s' "$no_think" | awk '
+        BEGIN { in_json = 0; brace_count = 0 }
+        /{/ {
+            if (in_json == 0) { in_json = 1 }
+            brace_count += gsub(/{/, "{")
+        }
+        in_json == 1 { print }
+        /}/ {
+            brace_count -= gsub(/}/, "}")
+            if (brace_count == 0) { exit }
+        }
+    '
 }
 
 ollama_check() {
