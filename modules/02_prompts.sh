@@ -1,8 +1,14 @@
 # ==============================================================================
 # PRE-STEP: Resume / State Recovery
 # ==============================================================================
-# Use ls -1d instead of array directly to avoid issues on older bashes
-PREV_SCANS=$(ls -1d OWASP_SCAN_* 2>/dev/null | tail -n 5 || true)
+# Support sesi lama (OWASP_SCAN_*), sesi transisi (SCAN_*), dan sesi baru (Result/*_SCAN_*)
+PREV_SCANS=$(
+    {
+        ls -1d Result/*_SCAN_* 2>/dev/null || true
+        ls -1d SCAN_* 2>/dev/null || true
+        ls -1d OWASP_SCAN_* 2>/dev/null || true
+    } | awk 'NF' | sort -u | tail -n 8 || true
+)
 RESUME_DIR=""
 
 if [[ -n "$PREV_SCANS" ]]; then

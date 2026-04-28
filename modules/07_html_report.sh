@@ -219,6 +219,13 @@ if [[ -f "$REPORT_DIR/ai_campaign_memory.txt" ]] && [[ -s "$REPORT_DIR/ai_campai
     echo "</pre></div></div>" >> "$HTML_FILE"
 fi
 
+# AI Memory Blacklist
+if [[ -f "$REPORT_DIR/ai_memory_blacklist_summary.txt" ]] && [[ -s "$REPORT_DIR/ai_memory_blacklist_summary.txt" ]]; then
+    echo "<div class='card high'><div class='card-header'>⛔ AI Memory Blacklist (Auto)</div><div class='card-body'><pre>" >> "$HTML_FILE"
+    awk 'NR<=200 {gsub(/&/,"\&amp;"); gsub(/</,"\&lt;"); gsub(/>/,"\&gt;"); print}' "$REPORT_DIR/ai_memory_blacklist_summary.txt" >> "$HTML_FILE"
+    echo "</pre></div></div>" >> "$HTML_FILE"
+fi
+
 # Confidence-Scored Findings
 if [[ -f "$REPORT_DIR/scored_findings_summary.tsv" ]] && [[ -s "$REPORT_DIR/scored_findings_summary.tsv" ]]; then
     echo "<div class='card critical'><div class='card-header'>🎯 Confidence-Scored Findings</div><div class='card-body'><pre>" >> "$HTML_FILE"

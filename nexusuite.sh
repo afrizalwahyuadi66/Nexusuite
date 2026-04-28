@@ -263,6 +263,24 @@ else
         export AI_ENABLE_DORKING="${AI_ENABLE_DORKING:-true}"
         echo -e "${CYAN}[*] AI Full Control aktif: orchestrator + dorking akan dijalankan.${NC}"
         
+        # Opsi memory shared lintas model (hybrid memory pool)
+        # Ini hanya ditawarkan saat mode Full AI dipilih.
+        if [[ "${AI_MEMORY_SHARED:-false}" == "true" || "${AI_MEMORY_SHARED:-false}" == "1" ]]; then
+            DEFAULT_SHARED_CHOICE="y"
+        else
+            DEFAULT_SHARED_CHOICE="n"
+        fi
+        echo -e "${YELLOW}[?] Aktifkan Memory Shared lintas model AI? (y/n) [${DEFAULT_SHARED_CHOICE}]: ${NC}\c"
+        read MEMORY_SHARED_CHOICE
+        MEMORY_SHARED_CHOICE="${MEMORY_SHARED_CHOICE:-$DEFAULT_SHARED_CHOICE}"
+        if [[ "$MEMORY_SHARED_CHOICE" =~ ^[Yy]$ ]]; then
+            export AI_MEMORY_SHARED="true"
+            echo -e "${CYAN}[*] Memory Shared: AKTIF (session + per-model + shared).${NC}"
+        else
+            export AI_MEMORY_SHARED="false"
+            echo -e "${YELLOW}[*] Memory Shared: NONAKTIF (session + per-model saja).${NC}"
+        fi
+        
         # Opsi pemilihan model AI secara otomatis dari Ollama
         echo -e "${YELLOW}[?] Memuat daftar model Ollama yang tersedia...${NC}"
         if command -v curl &>/dev/null; then
@@ -299,6 +317,27 @@ else
         export USE_AI=${USE_AI:-n}
     fi
 fi
+
+# Konfigurasi timeout AI/Ollama saat startup (menit).
+# Default minimal 5 menit agar tidak mudah timeout pada model/host yang lambat.
+DEFAULT_TIMEOUT_MIN=5
+if [[ -n "${AI_HTTP_TIMEOUT:-}" && "${AI_HTTP_TIMEOUT}" =~ ^[0-9]+$ ]]; then
+    calc_min=$(( (AI_HTTP_TIMEOUT + 59) / 60 ))
+    if [[ "$calc_min" -ge 5 ]]; then
+        DEFAULT_TIMEOUT_MIN="$calc_min"
+    fi
+fi
+echo -e "${YELLOW}[?] Atur timeout request AI/Ollama (menit, minimal 5) [default: ${DEFAULT_TIMEOUT_MIN}]: ${NC}\c"
+read AI_TIMEOUT_MINUTES
+AI_TIMEOUT_MINUTES="${AI_TIMEOUT_MINUTES:-$DEFAULT_TIMEOUT_MIN}"
+if ! [[ "$AI_TIMEOUT_MINUTES" =~ ^[0-9]+$ ]]; then
+    AI_TIMEOUT_MINUTES="$DEFAULT_TIMEOUT_MIN"
+fi
+if [[ "$AI_TIMEOUT_MINUTES" -lt 5 ]]; then
+    AI_TIMEOUT_MINUTES=5
+fi
+export AI_HTTP_TIMEOUT="$((AI_TIMEOUT_MINUTES * 60))"
+echo -e "${CYAN}[*] Timeout AI/Ollama diatur ke ${AI_TIMEOUT_MINUTES} menit (${AI_HTTP_TIMEOUT} detik).${NC}"
 
 # Jika pengguna memilih ya, cek status Ollama
 if [[ "$USE_AI" == "y" || "$USE_AI" == "Y" ]]; then

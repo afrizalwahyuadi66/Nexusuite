@@ -46,10 +46,92 @@ ollama_generate() {
 SAFE_MODEL_NAME="${OLLAMA_MODEL//[:\/]/_}"
 GLOBAL_AI_MEMORY_DIR="$SCRIPT_DIR/../ai_memory"
 GLOBAL_MEMORY_FILE="$GLOBAL_AI_MEMORY_DIR/memory_ai_${SAFE_MODEL_NAME}.jsonl"
+SHARED_MEMORY_FILE="${AI_MEMORY_SHARED_FILE:-$GLOBAL_AI_MEMORY_DIR/memory_ai_shared.jsonl}"
+if [[ "$LOG_DIR" == *"/targets/"* ]]; then
+    OUTPUT_BASE="${LOG_DIR%%/targets/*}"
+else
+    OUTPUT_BASE="$(dirname "$LOG_DIR")"
+fi
+CAMPAIGN_MEMORY_FILE="$OUTPUT_BASE/ai_memory/campaign_memory.jsonl"
 
 load_recent_campaign_memory() {
     local count="${AI_MEMORY_WINDOW:-30}"
-    if [[ -s "$GLOBAL_MEMORY_FILE" ]]; then
+    local target_lc="${TARGET,,}"
+    local target_root
+    target_root="$(echo "$target_lc" | sed -E 's#^https?://##; s#/.*$##' | awk -F. '{if (NF>2) print $(NF-1)"."$NF; else print $0}')"
+    if command -v jq >/dev/null 2>&1; then
+        jq -n \
+          --arg t "$target_lc" \
+          --arg tr "$target_root" \
+          --argjson n "$count" \
+          --argjson half_life "${AI_MEMORY_DECAY_HALFLIFE_DAYS:-14}" \
+          --argjson bl_fail "${AI_MEMORY_BLACKLIST_FAIL_THRESHOLD:-3}" \
+          --argjson bl_days "${AI_MEMORY_BLACKLIST_WINDOW_DAYS:-30}" \
+          --arg shared_on "${AI_MEMORY_SHARED:-false}" \
+          --slurpfile s "$CAMPAIGN_MEMORY_FILE" \
+          --slurpfile g "$GLOBAL_MEMORY_FILE" \
+          --slurpfile h "$SHARED_MEMORY_FILE" '
+          def to_list($arr; $src): $arr | map(. + {source:$src});
+          def age_days($ts): ((now - (($ts | fromdateiso8601?) // now)) / 86400);
+          def decay($days): (if $days <= 0 then 1 else pow(0.5; ($days / ($half_life | if . <= 0 then 14 else . end))) end);
+          def target_score($target):
+            ($target // "" | ascii_downcase) as $tt
+            | if $tt == $t then 1.0
+              elif ($tt | contains($t)) then 0.9
+              elif (($tr|length) > 0 and (($tt | contains($tr)) or ($t | contains($tr)))) then 0.6
+              else 0.15 end;
+          ((to_list($s; "session")
+            + to_list($g; "global")
+            + (if ($shared_on == "true" or $shared_on == "1") then to_list($h; "shared") else [] end)
+           ) | map(select(type=="object"))) as $all
+          | ($all | map(select(((.target // "" | ascii_downcase) == $t) or ((.target // "" | ascii_downcase) | contains($t)))) | length) as $same_hits
+          | (if $same_hits > 0 then 1.35 else 0.9 end) as $session_bias
+          | (if $same_hits > 0 then 0.95 else 1.1 end) as $global_bias
+          | (if $same_hits > 0 then 0.70 else 0.85 end) as $shared_bias
+          | ($all | map(
+              . as $e
+              | ($e.timestamp // null) as $ts
+              | (if $ts == null then 365 else age_days($ts) end) as $days
+              | (if $e.source == "session" then $session_bias
+                 elif $e.source == "shared" then $shared_bias
+                 else $global_bias end) as $srcb
+              | (target_score($e.target) * 42
+                 + (if ($e.risk // "" | ascii_downcase) == "critical" then 20 elif ($e.risk // "" | ascii_downcase) == "high" then 12 elif ($e.risk // "" | ascii_downcase) == "medium" then 6 else 2 end)
+                 + (if ($e.outcome // "unknown") == "success" then 8 elif ($e.outcome // "unknown") == "failed" then -6 else 0 end)
+                 + ((($e.verification_ok // 0) + ($e.controlled_ok // 0)) * 2)
+                ) as $raw
+              | . + {score: ($raw * decay($days) * $srcb), age_days: $days}
+            )) as $scored
+          | ($scored
+             | map(select(((.age_days // 9999) <= $bl_days) and ((.technique // "N/A") != "N/A")))
+             | sort_by(.technique)
+             | group_by(.technique)
+             | map({technique:.[0].technique, fails:(map(select((.outcome // "") == "failed"))|length), successes:(map(select((.outcome // "") == "success"))|length)})
+             | map(select(.fails >= $bl_fail and .successes == 0))
+             | map(.technique)
+            ) as $blacklist
+          | ([
+              "[MEMORY ENGINE v2] source_mix=session+global" + (if ($shared_on == "true" or $shared_on == "1") then "+shared" else "" end) + " adaptive=true decay_half_life_days=\($half_life)",
+              "[BLACKLIST TECHNIQUE AUTO]",
+              (if ($blacklist|length)==0 then "- none" else ($blacklist[] | "- \(.)") end),
+              "[TOP RELEVANT MEMORIES]"
+            ]
+            + ($scored
+               | sort_by(-.score, .timestamp)
+               | .[:$n]
+               | map("[\(.timestamp // "NA")] src=\(.source) score=\((.score|floor)) target=\(.target // "NA") risk=\(.risk // "NA") outcome=\(.outcome // "unknown") cve=\(.cve // "None") technique=\(.technique // "N/A")")
+              )
+           ) | .[]
+        ' 2>/dev/null || {
+            if [[ -s "$CAMPAIGN_MEMORY_FILE" ]]; then
+                tail -n "$count" "$CAMPAIGN_MEMORY_FILE" 2>/dev/null || true
+            else
+                tail -n "$count" "$GLOBAL_MEMORY_FILE" 2>/dev/null || true
+            fi
+        }
+    elif [[ -s "$CAMPAIGN_MEMORY_FILE" ]]; then
+        tail -n "$count" "$CAMPAIGN_MEMORY_FILE" 2>/dev/null || true
+    elif [[ -s "$GLOBAL_MEMORY_FILE" ]]; then
         tail -n "$count" "$GLOBAL_MEMORY_FILE" 2>/dev/null || true
     else
         echo "Memori masih kosong. Ini adalah pengalaman pertamamu."
@@ -75,6 +157,7 @@ $CAMPAIGN_MEMORY_SNIPPET
 TUGASMU:
 Berpikirlah seperti peretas elit (berpikir cerdas, logis, eksplosif, dan adaptif). 
 - Jadikan [LONG-TERM AI MEMORY] sebagai pedoman mutlak. Jika teknik tersebut pernah berhasil, gunakan lagi untuk menjadi lebih tajam.
+- Hormati [BLACKLIST TECHNIQUE AUTO]: jangan ulangi teknik yang ditandai gagal berulang.
 - Jika target adalah IP, cek apakah ini IP asli atau reDNS (cek dari Nmap/Nikto atau jalankan curl/nslookup).
 - Cari CVE yang relevan berdasarkan teknologi yang berjalan (Gunakan 'searchsploit' atau curl ke database eksploit publik).
 - Bangun payload kustom jika menemukan endpoint rentan, lalu kirim request (Gunakan 'curl', 'httpx', 'sqlmap', dll).

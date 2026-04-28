@@ -293,6 +293,22 @@ else
     echo "No campaign memory entries yet." >> "$REPORT_DIR/full_report.txt"
 fi
 
+# 11.4 Memory Blacklist Summary
+write_section "AI MEMORY BLACKLIST (AUTO)"
+AI_MEMORY_BLACKLIST_SUMMARY="$REPORT_DIR/ai_memory_blacklist_summary.txt"
+: > "$AI_MEMORY_BLACKLIST_SUMMARY"
+find "$OUTPUT_BASE/targets" -name "ai_memory_blacklist.txt" -type f 2>/dev/null | while read -r bfile; do
+    domain_name=$(get_domain "$bfile")
+    echo "--- $domain_name ---" >> "$AI_MEMORY_BLACKLIST_SUMMARY"
+    cat "$bfile" >> "$AI_MEMORY_BLACKLIST_SUMMARY"
+    echo "" >> "$AI_MEMORY_BLACKLIST_SUMMARY"
+done
+if [[ -s "$AI_MEMORY_BLACKLIST_SUMMARY" ]]; then
+    cat "$AI_MEMORY_BLACKLIST_SUMMARY" >> "$REPORT_DIR/full_report.txt"
+else
+    echo "No auto-blacklisted techniques in this session." >> "$REPORT_DIR/full_report.txt"
+fi
+
 # 11.5 Confidence Scoring & Dedup
 write_section "CONFIDENCE-SCORED FINDINGS"
 SCORED_SUMMARY="$REPORT_DIR/scored_findings_summary.tsv"
