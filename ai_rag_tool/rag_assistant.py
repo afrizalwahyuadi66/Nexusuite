@@ -119,7 +119,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="AI RAG Pentest Assistant (Lightweight)")
     parser.add_argument("-q", "--query", type=str, required=True, help="Input dari hasil scan (misal: 'Apache 2.4.49')")
-    parser.add_argument("-m", "--model", type=str, default=MODEL_NAME, help="Model Ollama yang digunakan (default: qwen2:0.5b)")
+    parser.add_argument("-m", "--model", type=str, default=MODEL_NAME, help="Model Ollama yang digunakan (default: qwen2.5:7b)")
     args = parser.parse_args()
 
     MODEL_NAME = args.model

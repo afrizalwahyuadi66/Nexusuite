@@ -58,35 +58,42 @@ fi
 echo "[orchestrator] AI safe orchestrator started for $target_host"
 
 cat > "$dork_queries" <<EOF
-site:$target_host inurl:.php?id=
-site:$target_host inurl:=id
-site:$target_host inurl:=user
-site:$target_host inurl:=account
-site:$target_host ext:php inurl:?
-site:$target_host "index.php?"
-site:$target_host ext:sql OR ext:bak OR ext:old
-site:$target_host ext:env OR ext:log OR ext:txt
-site:$target_host intitle:"index of"
-site:$target_host inurl:/api/ v1
-site:$target_host inurl:graphql
-site:$target_host inurl:swagger OR inurl:openapi
-site:$target_host inurl:redirect= OR inurl:return=
-site:$target_host inurl:next= OR inurl:url=
-site:$target_host inurl:callback=
-site:$target_host inurl:login OR inurl:signin OR inurl:auth
-site:$target_host inurl:admin OR inurl:dashboard OR inurl:manage
-site:$target_host inurl:upload OR inurl:import OR inurl:export
-site:$target_host inurl:debug OR inurl:trace OR inurl:test
-site:$target_host inurl:reset-password OR inurl:forgot-password
-site:$target_host inurl:download OR inurl:file= OR inurl:path=
-site:$target_host inurl:graphql OR inurl:graphiql
-site:$target_host "access_token" OR "refresh_token"
+site:$target_host inurl:".php?id="
+site:$target_host inurl:"?id=" OR inurl:"&id="
+site:$target_host inurl:"?user=" OR inurl:"&user="
+site:$target_host inurl:"?account=" OR inurl:"&account="
+site:$target_host ext:php inurl:"?" -site:facebook.com
+site:$target_host "index.php?" filetype:php
+site:$target_host filetype:sql OR filetype:bak OR filetype:old
+site:$target_host filetype:env OR filetype:log OR filetype:txt
+site:$target_host intitle:"index of" -github -gitlab
+site:$target_host inurl:"/api/" inurl:"/v1/" OR inurl:"/v2/"
+site:$target_host inurl:"/graphql" OR inurl:"/graphiql"
+site:$target_host inurl:"/swagger" OR inurl:"/openapi" OR inurl:"/.well-known/"
+site:$target_host inurl:"redirect=" OR inurl:"return=" OR inurl:"returnurl="
+site:$target_host inurl:"next=" OR inurl:"url=" OR inurl:"uri="
+site:$target_host inurl:"callback=" OR inurl:"continue="
+site:$target_host inurl:"login" OR inurl:"signin" OR inurl:"auth" filetype:php
+site:$target_host inurl:"admin" OR inurl:"dashboard" OR inurl:"manage" inurl:"?"
+site:$target_host inurl:"upload" OR inurl:"import" OR inurl:"export" filetype:php
+site:$target_host inurl:"debug" OR inurl:"trace" OR inurl:"test" filetype:php
+site:$target_host inurl:"reset-password" OR inurl:"forgot-password" OR inurl:"password-reset"
+site:$target_host inurl:"download" OR inurl:"file=" OR inurl:"path=" inurl:"?"
+site:$target_host inurl:".env" OR inurl:"config.php" OR inurl:"settings.php"
+site:$target_host "access_token=" OR "refresh_token=" OR "api_key=" OR "secret="
+site:$target_host inurl:"search" OR inurl:"filter" OR inurl:"query" inurl:"?" -site:github.com
+site:$target_host inurl:"/api/" inurl:".json" OR inurl:".xml"
 EOF
 
 collect_urls_from_file() {
     local f="$1"
     [[ -f "$f" ]] || return 0
-    grep -Eo 'https?://[^"'"'"' ]+' "$f" 2>/dev/null || true
+    # Ekstrak host utama (contoh: drive.bgn.go.id -> bgn.go.id)
+    local root_domain
+    root_domain="$(echo "$target_host" | awk -F. '{if (NF>2) print $(NF-1)"."$NF; else print $0}')"
+    
+    # Hanya tangkap URL yang mengandung host utama atau IP target
+    grep -Eo 'https?://[^"'"'"' ]+' "$f" 2>/dev/null | grep -iE "($target_host|$root_domain)" || true
 }
 
 {

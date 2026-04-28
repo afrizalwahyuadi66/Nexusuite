@@ -49,6 +49,11 @@ write_state_snapshot() {
     [[ -f "${TARGETS_FILE:-}" ]] && targets_count="$(wc -l < "$TARGETS_FILE" | tr -d ' ')"
 
     if command -v jq >/dev/null 2>&1; then
+        # Ensure targets_count is a valid number
+        targets_count="${targets_count:-0}"
+        targets_count="${targets_count//[^0-9]/}"
+        [[ -z "$targets_count" ]] && targets_count=0
+        
         jq -n \
           --arg ts "$(date -Iseconds)" \
           --arg output_base "${OUTPUT_BASE:-}" \
@@ -62,7 +67,7 @@ write_state_snapshot() {
           --arg selected_tools "$selected_tools" \
           --arg risk_policy "${AI_RISK_POLICY_FILE:-}" \
           --arg replay_failed "${AI_REPLAY_FAILED_ONLY:-false}" \
-          --argjson targets_count "${targets_count:-0}" \
+          --argjson targets_count "$targets_count" \
           '{
             generated_at: $ts,
             output_base: $output_base,

@@ -78,17 +78,22 @@ SQLMAP_FINDINGS="$REPORT_DIR/sqlmap_vulns.txt"
 : > "$SQLMAP_FINDINGS"
 find "$OUTPUT_BASE/targets" -path "*/vulnerabilities/sqlmap/*/log" -type f 2>/dev/null | while read -r logfile; do
     domain_name=$(get_domain "$logfile")
-    if grep -q "\[CRITICAL\]" "$logfile" 2>/dev/null || grep -q "vulnerable" "$logfile" 2>/dev/null; then
+    # Hanya masukkan log yang berhasil mengekstrak nama database (menandakan eksploitasi sukses)
+    if grep -qE "fetching database names|available databases|\[\*\] information_schema" "$logfile" 2>/dev/null; then
         echo "--- $domain_name ---" >> "$SQLMAP_FINDINGS"
-        grep -E "Parameter:|Type:|Title:|Payload:|\[CRITICAL\]|database:" "$logfile" | head -20 >> "$SQLMAP_FINDINGS"
+        grep -E "Parameter:|Type:|Title:|Payload:|\[CRITICAL\]|database:|^\[\*\]" "$logfile" | head -30 >> "$SQLMAP_FINDINGS"
         echo "" >> "$SQLMAP_FINDINGS"
     fi
 done
 find "$OUTPUT_BASE/targets" -path "*/vulnerabilities/sqlmap/*/target.txt" -type f 2>/dev/null | while read -r targetfile; do
     domain_name=$(get_domain "$targetfile")
-    echo "--- $domain_name (confirmed) ---" >> "$SQLMAP_FINDINGS"
-    cat "$targetfile" >> "$SQLMAP_FINDINGS"
-    echo "" >> "$SQLMAP_FINDINGS"
+    # Cek apakah log untuk target ini benar-benar valid sebelum menambahkan target.txt
+    logfile=$(dirname "$targetfile")/log
+    if [[ -f "$logfile" ]] && grep -qE "fetching database names|available databases" "$logfile" 2>/dev/null; then
+        echo "--- $domain_name (confirmed) ---" >> "$SQLMAP_FINDINGS"
+        cat "$targetfile" >> "$SQLMAP_FINDINGS"
+        echo "" >> "$SQLMAP_FINDINGS"
+    fi
 done
 if [[ -s "$SQLMAP_FINDINGS" ]]; then
     echo "SQL injection vulnerabilities found!" | tee -a "$REPORT_DIR/full_report.txt"

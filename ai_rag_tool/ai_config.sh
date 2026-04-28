@@ -45,7 +45,7 @@ _load_env_file() {
 _load_env_file "$_AI_PROJECT_ROOT/.env"
 
 export OLLAMA_HOST="${OLLAMA_HOST:-http://localhost:11434}"
-export OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5:0.5b}"
+export OLLAMA_MODEL="${OLLAMA_MODEL:-deepseek-r1:8b}"
 export AI_HTTP_TIMEOUT="${AI_HTTP_TIMEOUT:-30}"
 export AI_LOG_SNIPPET_CHARS="${AI_LOG_SNIPPET_CHARS:-6000}"
 export AI_ENABLE_WEB_SEARCH="${AI_ENABLE_WEB_SEARCH:-true}"
@@ -62,6 +62,7 @@ export AI_AUTONOMOUS_TARGETS_FILE="${AI_AUTONOMOUS_TARGETS_FILE:-}"
 export AI_AUTONOMOUS_CONCURRENCY="${AI_AUTONOMOUS_CONCURRENCY:-3}"
 export AI_ENABLE_DORKING="${AI_ENABLE_DORKING:-true}"
 export AI_PROXY_FOR_INTEL="${AI_PROXY_FOR_INTEL:-false}"
+export AI_DORK_USE_PROXY="${AI_DORK_USE_PROXY:-false}"
 export AI_AGGRESSIVE_MODE="${AI_AGGRESSIVE_MODE:-false}"
 export AI_AGGRESSIVE_LEVEL="${AI_AGGRESSIVE_LEVEL:-1}"
 export AI_RISK_POLICY_FILE="${AI_RISK_POLICY_FILE:-$_AI_POLICY_FILE_DEFAULT}"
@@ -111,6 +112,19 @@ fi
 
 ollama_curl() {
     curl --noproxy "${AI_NO_PROXY:-localhost,127.0.0.1,::1}" "$@"
+}
+
+clean_json_response() {
+    local raw="$1"
+    # Hapus tag <think>...</think> (termasuk newlines) yang dihasilkan model reasoning seperti DeepSeek-R1
+    local no_think
+    no_think=$(printf '%s' "$raw" | awk '
+        /<think>/ { in_think=1; next }
+        /<\/think>/ { in_think=0; next }
+        !in_think { print }
+    ')
+    # Ekstrak hanya blok JSON pertama yang valid
+    printf '%s' "$no_think" | sed -n '/{/,/}/p'
 }
 
 ollama_check() {

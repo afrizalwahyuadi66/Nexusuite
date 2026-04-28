@@ -42,7 +42,7 @@ ai_agent:
   enabled_by_default: false  # User is prompted at runtime
   engine: "Ollama Local LLM"
   recommended_models:
-    - "qwen2.5:0.5b"
+    - "deepseek-r1:8b"
     - "llama3.2"
   
   tasks:

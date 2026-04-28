@@ -1,4 +1,4 @@
 name: nmap
 tier: medium
 timeout_sec: 1500
-command_template: nmap -sV -T3 {target} > {output} 2>&1
+command_template: nmap -sV -T3 {target} -oN {output}

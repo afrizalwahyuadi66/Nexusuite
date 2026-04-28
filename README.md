@@ -90,7 +90,7 @@ Minimum required tooling includes:
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull a default local model
-ollama pull qwen2.5:0.5b
+ollama pull deepseek-r1:8b
 
 # Install Python dependencies
 pip install -r ai_rag_tool/requirements.txt
@@ -104,7 +104,7 @@ cp .env.example .env
 
 # Base AI Config
 OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:0.5b
+OLLAMA_MODEL=deepseek-r1:8b
 
 # Advanced Autonomous Pentester Configs
 AI_AGGRESSIVE_MODE=true

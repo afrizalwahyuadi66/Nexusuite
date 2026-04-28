@@ -43,14 +43,18 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
     # 1. Audit SQLMap: Mencari indikasi injeksi sukses ([CRITICAL] atau adanya file target.txt)
     if [[ -d "$target_dir/vulnerabilities/sqlmap" ]]; then
         find "$target_dir/vulnerabilities/sqlmap" -name "log" -type f 2>/dev/null | while read -r logfile; do
-            if grep -q "\[CRITICAL\]" "$logfile" || grep -q "vulnerable" "$logfile"; then
-                echo "[SQLi] Confirmed SQL Injection in URL/Parameter found by SQLMap" >> "$AUDIT_FILE"
+            # Validasi ketat: Hanya setuju jika berhasil mengekstrak nama database (bukti eksploitasi bisa dijalankan)
+            if grep -qE "fetching database names|available databases|\[\*\] information_schema" "$logfile"; then
+                echo "[SQLi] Confirmed SQL Injection in URL/Parameter found by SQLMap (Database extracted)" >> "$AUDIT_FILE"
             fi
         done
         
-        # Jika ada file target.txt, itu artinya payload sudah berhasil terinjeksi
+        # Jika ada file target.txt, pastikan log aslinya juga menunjukkan database
         find "$target_dir/vulnerabilities/sqlmap" -name "target.txt" -type f 2>/dev/null | while read -r targetfile; do
-            echo "[SQLi] SQL Injection Confirmed. Payload tested successfully." >> "$AUDIT_FILE"
+            logfile=$(dirname "$targetfile")/log
+            if [[ -f "$logfile" ]] && grep -qE "fetching database names|available databases" "$logfile"; then
+                echo "[SQLi] SQL Injection Confirmed. Payload tested successfully." >> "$AUDIT_FILE"
+            fi
         done
     fi
     
@@ -153,7 +157,12 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
                 ORCH_SCRIPT="$(dirname "$(dirname "$BASH_SOURCE")")/ai_rag_tool/ai_orchestrator_safe.sh"
                 chmod +x "$ORCH_SCRIPT" 2>/dev/null || true
                 log_msg "AI" "\033[1;35m" "$target_name" "ORCHESTRATOR" "Menjalankan discovery pasif (dorking, parameter, IDOR candidate)..."
-                bash "$ORCH_SCRIPT" --target "$target_name" --log-dir "$target_dir" >> "$target_dir/scan.log" 2>&1 || true
+                if [[ "${AI_DORK_USE_PROXY:-${AI_PROXY_FOR_INTEL:-false}}" == "true" || "${AI_DORK_USE_PROXY:-${AI_PROXY_FOR_INTEL:-false}}" == "1" ]]; then
+                    bash "$ORCH_SCRIPT" --target "$target_name" --log-dir "$target_dir" >> "$target_dir/scan.log" 2>&1 || true
+                else
+                    env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy \
+                        bash "$ORCH_SCRIPT" --target "$target_name" --log-dir "$target_dir" >> "$target_dir/scan.log" 2>&1 || true
+                fi
             fi
 
             # Menggunakan skrip BASH agar terhindar dari masalah modul Python!
@@ -172,7 +181,7 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
                     --target "$target_name" \
                     --log-dir "$target_dir" \
                     --plan-file "$target_dir/vulnerabilities/ai_attack_graph.json" \
-                    --model "${OLLAMA_MODEL:-qwen2.5:0.5b}" \
+                    --model "${OLLAMA_MODEL:-qwen2.5:7b}" \
                     --host "${OLLAMA_HOST:-http://localhost:11434}" | tee -a "$TARGET_LOG" "$AI_RESULT_FILE"
             else
                 env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy \
@@ -180,7 +189,7 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
                     --target "$target_name" \
                     --log-dir "$target_dir" \
                     --plan-file "$target_dir/vulnerabilities/ai_attack_graph.json" \
-                    --model "${OLLAMA_MODEL:-qwen2.5:0.5b}" \
+                    --model "${OLLAMA_MODEL:-qwen2.5:7b}" \
                     --host "${OLLAMA_HOST:-http://localhost:11434}" | tee -a "$TARGET_LOG" "$AI_RESULT_FILE"
             fi
 

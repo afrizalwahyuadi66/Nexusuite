@@ -74,7 +74,7 @@ run_doctor() {
         echo "Nexusuite Doctor"
         echo "============================================================"
         echo "[INFO] OLLAMA_HOST=${OLLAMA_HOST:-http://localhost:11434}"
-        echo "[INFO] OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:0.5b}"
+        echo "[INFO] OLLAMA_MODEL=${OLLAMA_MODEL:-deepseek-r1:8b}"
         echo
         echo "[CHECK] Tools:"
     fi
@@ -144,7 +144,7 @@ PY
         printf '{\n'
         printf '  "ok": %s,\n' "$ok_status"
         printf '  "ollama_host": "%s",\n' "$(json_escape "${OLLAMA_HOST:-http://localhost:11434}")"
-        printf '  "ollama_model": "%s",\n' "$(json_escape "${OLLAMA_MODEL:-qwen2.5:0.5b}")"
+        printf '  "ollama_model": "%s",\n' "$(json_escape "${OLLAMA_MODEL:-deepseek-r1:8b}")"
         printf '  "tools": {\n'
         printf '    "ok": '
         json_array "${tools_ok[@]}"
@@ -240,6 +240,7 @@ fi
 # Define ANSI Colors
 YELLOW='\033[1;33m'
 CYAN='\033[1;36m'
+GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
 # Tanyakan mode AI saat awal startup.
@@ -261,6 +262,37 @@ else
         export USE_AI="y"
         export AI_ENABLE_DORKING="${AI_ENABLE_DORKING:-true}"
         echo -e "${CYAN}[*] AI Full Control aktif: orchestrator + dorking akan dijalankan.${NC}"
+        
+        # Opsi pemilihan model AI secara otomatis dari Ollama
+        echo -e "${YELLOW}[?] Memuat daftar model Ollama yang tersedia...${NC}"
+        if command -v curl &>/dev/null; then
+            available_models=$(curl -s http://localhost:11434/api/tags | jq -r '.models[].name' 2>/dev/null)
+            if [[ -n "$available_models" ]]; then
+                echo -e "${CYAN}Model AI yang tersedia di Ollama lokal Anda:${NC}"
+                model_array=()
+                idx=1
+                while IFS= read -r model_name; do
+                    echo -e "    $idx) $model_name"
+                    model_array+=("$model_name")
+                    ((idx++))
+                done <<< "$available_models"
+                
+                echo -e "${YELLOW}Pilih model AI (masukkan angka, default: 1): ${NC}\c"
+                read MODEL_CHOICE
+                MODEL_CHOICE="${MODEL_CHOICE:-1}"
+                
+                # Validasi pilihan
+                if [[ "$MODEL_CHOICE" =~ ^[0-9]+$ ]] && [[ "$MODEL_CHOICE" -gt 0 ]] && [[ "$MODEL_CHOICE" -le "${#model_array[@]}" ]]; then
+                    selected_model="${model_array[$((MODEL_CHOICE-1))]}"
+                    export OLLAMA_MODEL="$selected_model"
+                    echo -e "${GREEN}[+] Model AI diatur ke: $selected_model${NC}"
+                else
+                    echo -e "${YELLOW}[!] Pilihan tidak valid. Menggunakan model default: ${OLLAMA_MODEL:-deepseek-r1:8b}${NC}"
+                fi
+            else
+                echo -e "${YELLOW}[!] Gagal mengambil daftar model dari Ollama. Menggunakan model default: ${OLLAMA_MODEL:-deepseek-r1:8b}${NC}"
+            fi
+        fi
     else
         echo -e "${YELLOW}[?] Aktifkan AI Pentester (Ollama Lokal) untuk analisis hasil scan? (y/n) [n]: ${NC}\c"
         read USE_AI

@@ -50,6 +50,7 @@ export PROXY_DEAD_FILE="$OUTPUT_BASE/proxies_dead.txt"
 touch "$PROXY_LIST_FILE" "$PROXY_USED_FILE" "$PROXY_DEAD_FILE"
 export USE_PROXY="false"
 export PROXY_STRICT="false"
+export AI_DORK_USE_PROXY="${AI_DORK_USE_PROXY:-false}"
 AI_AUTONOMOUS_MODE=false
 AI_REPLAY_MODE=false
 AI_AUTONOMOUS_TARGETS_NORMALIZED="$(echo "${AI_AUTONOMOUS_TARGETS:-}" | tr ', ' '\n\n' | sed '/^$/d' || true)"
@@ -75,11 +76,12 @@ write_mode_marker() {
 
 if [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
     gum style --foreground 240 "AI Orchestrator aktif: default No Proxy."
-elif [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-false}" == "1" ]]; then
-    gum style --foreground 240 "AI Orchestrator aktif tanpa target env/file: lanjut mode target interaktif."
 elif [[ "${DRY_RUN:-false}" == "true" ]]; then
     gum style --foreground 240 "DRY-RUN aktif: proxy check dilewati."
 else
+if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-false}" == "1" ]]; then
+    gum style --foreground 240 "AI Full Control interaktif: silakan pilih proxy sebelum scan dimulai."
+fi
 while true; do
     PROXY_MODE=$(gum choose --header "Route traffic through Proxy?" "No Proxy" "Manual Input (Multiple comma-separated)" "From File")
     
@@ -174,6 +176,28 @@ while true; do
         fi
     fi
 done
+fi
+
+if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-false}" == "1" ]]; then
+    if [[ "${AI_ENABLE_DORKING:-true}" == "true" || "${AI_ENABLE_DORKING:-true}" == "1" ]]; then
+        if [[ "$USE_PROXY" == "true" ]]; then
+            DORK_PROXY_CHOICE=$(gum choose --header "Gunakan proxy untuk proses Dorking AI?" \
+                "Tidak (Recommended)" \
+                "Ya, gunakan proxy yang sama")
+            if [[ "$DORK_PROXY_CHOICE" == "Ya, gunakan proxy yang sama" ]]; then
+                export AI_DORK_USE_PROXY="true"
+                gum style --foreground 214 "Dorking AI akan berjalan melalui proxy aktif."
+            else
+                export AI_DORK_USE_PROXY="false"
+                gum style --foreground 240 "Dorking AI akan berjalan direct (tanpa proxy)."
+            fi
+        else
+            export AI_DORK_USE_PROXY="false"
+            gum style --foreground 240 "Dorking AI tanpa proxy karena mode scan saat ini No Proxy."
+        fi
+    else
+        export AI_DORK_USE_PROXY="false"
+    fi
 fi
 
 # ==============================================================================
@@ -457,7 +481,7 @@ else
     export NMAP_ARGS=${NMAP_ARGS:-$DEFAULT_NMAP_ARGS}
 
     # MODIFIKASI 3: Konfigurasi SQLMap arguments
-    DEFAULT_SQLMAP_ARGS="--random-agent --dbs --batch"
+    DEFAULT_SQLMAP_ARGS="--random-agent --batch --level=1 --risk=1"
     SQLMAP_ARGS=$(gum input --prompt "SQLMap arguments [default: $DEFAULT_SQLMAP_ARGS]: " --width 80)
     export SQLMAP_ARGS=${SQLMAP_ARGS:-$DEFAULT_SQLMAP_ARGS}
 
