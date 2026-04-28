@@ -38,7 +38,7 @@ def _merge_no_proxy(host: str) -> str:
 def get_ai_settings() -> dict:
     _load_dotenv_if_exists()
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-    model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+    model = os.getenv("OLLAMA_MODEL", "deepseek-r1:8b")
     timeout = int(os.getenv("AI_HTTP_TIMEOUT", "300"))
     snippet_chars = int(os.getenv("AI_LOG_SNIPPET_CHARS", "6000"))
     enable_web_search = os.getenv("AI_ENABLE_WEB_SEARCH", "true").lower() in {

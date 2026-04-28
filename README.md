@@ -1,4 +1,4 @@
-<h1 align="center">Nexusuite (Autonomous AI Pentester Edition)</h1>
+<h1 align="center">Nexusuite v3.5.0 (Autonomous AI Pentester Edition)</h1>
 
 <p align="center">
   <b>Professional Web & Network Vulnerability Scanner with Autonomous AI Assistance</b><br>

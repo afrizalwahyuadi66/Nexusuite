@@ -1203,7 +1203,7 @@ EOF
                 local waf_payload
                 waf_payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$waf_prompt" '{model:$model,prompt:$prompt,stream:false}')"
                 local waf_resp
-                waf_resp="$(ollama_curl -fsS -m 20 -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$waf_payload" || true)"
+                waf_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT:-30}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$waf_payload" || true)"
                 
                 local waf_json
                 waf_json="$(echo "$waf_resp" | jq -r '.response // empty' 2>/dev/null || true)"
@@ -1313,7 +1313,7 @@ EOF
                             local js_payload
                             js_payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$js_prompt" '{model:$model,prompt:$prompt,stream:false}')"
                             local js_resp
-                            js_resp="$(ollama_curl -fsS -m 30 -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$js_payload" || true)"
+                            js_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT:-30}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$js_payload" || true)"
                             
                             local js_json
                             js_json="$(echo "$js_resp" | jq -r '.response // empty' 2>/dev/null || true)"

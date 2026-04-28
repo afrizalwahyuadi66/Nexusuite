@@ -181,7 +181,7 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
                     --target "$target_name" \
                     --log-dir "$target_dir" \
                     --plan-file "$target_dir/vulnerabilities/ai_attack_graph.json" \
-                    --model "${OLLAMA_MODEL:-qwen2.5:7b}" \
+                    --model "${OLLAMA_MODEL:-deepseek-r1:8b}" \
                     --host "${OLLAMA_HOST:-http://localhost:11434}" | tee -a "$TARGET_LOG" "$AI_RESULT_FILE"
             else
                 env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy \
@@ -189,7 +189,7 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
                     --target "$target_name" \
                     --log-dir "$target_dir" \
                     --plan-file "$target_dir/vulnerabilities/ai_attack_graph.json" \
-                    --model "${OLLAMA_MODEL:-qwen2.5:7b}" \
+                    --model "${OLLAMA_MODEL:-deepseek-r1:8b}" \
                     --host "${OLLAMA_HOST:-http://localhost:11434}" | tee -a "$TARGET_LOG" "$AI_RESULT_FILE"
             fi
 
