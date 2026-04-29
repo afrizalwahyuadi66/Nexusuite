@@ -80,7 +80,11 @@ find "$OUTPUT_BASE/targets" -path "*/vulnerabilities/sqlmap/*/log" -type f 2>/de
     domain_name=$(get_domain "$logfile")
     # Hanya masukkan log yang berhasil mengekstrak nama database (menandakan eksploitasi sukses)
     if grep -qE "fetching database names|available databases|\[\*\] information_schema" "$logfile" 2>/dev/null; then
+        targetfile="$(dirname "$logfile")/target.txt"
+        target_url="Unknown URL"
+        [[ -f "$targetfile" ]] && target_url=$(cat "$targetfile" | head -n 1)
         echo "--- $domain_name ---" >> "$SQLMAP_FINDINGS"
+        echo "[URL] $target_url" >> "$SQLMAP_FINDINGS"
         grep -E "Parameter:|Type:|Title:|Payload:|\[CRITICAL\]|database:|^\[\*\]" "$logfile" | head -30 >> "$SQLMAP_FINDINGS"
         echo "" >> "$SQLMAP_FINDINGS"
     fi
@@ -90,9 +94,14 @@ find "$OUTPUT_BASE/targets" -path "*/vulnerabilities/sqlmap/*/target.txt" -type 
     # Cek apakah log untuk target ini benar-benar valid sebelum menambahkan target.txt
     logfile=$(dirname "$targetfile")/log
     if [[ -f "$logfile" ]] && grep -qE "fetching database names|available databases" "$logfile" 2>/dev/null; then
-        echo "--- $domain_name (confirmed) ---" >> "$SQLMAP_FINDINGS"
-        cat "$targetfile" >> "$SQLMAP_FINDINGS"
-        echo "" >> "$SQLMAP_FINDINGS"
+        # Cek jika belum di-print oleh loop sebelumnya
+        target_url=$(cat "$targetfile" | head -n 1)
+        if ! grep -qF "[URL] $target_url" "$SQLMAP_FINDINGS"; then
+            echo "--- $domain_name (confirmed) ---" >> "$SQLMAP_FINDINGS"
+            echo "[URL] $target_url" >> "$SQLMAP_FINDINGS"
+            grep -E "Parameter:|Type:|Title:|Payload:|\[CRITICAL\]|database:|^\[\*\]" "$logfile" | head -30 >> "$SQLMAP_FINDINGS"
+            echo "" >> "$SQLMAP_FINDINGS"
+        fi
     fi
 done
 if [[ -s "$SQLMAP_FINDINGS" ]]; then

@@ -205,13 +205,13 @@ process_target() {
         local preferred=""
         case "$profile" in
             web)
-                preferred="subfinder httpx wafw00f gau katana paramspider arjun ffuf nuclei dalfox sqlmap wapiti nikto nmap"
+                preferred="subfinder httpx whatweb wafw00f wpscan gau katana paramspider arjun ffuf nuclei dalfox sqlmap wapiti nikto nmap"
                 ;;
             network)
-                preferred="subfinder httpx nmap wafw00f nuclei nikto gau katana ffuf wapiti sqlmap paramspider arjun dalfox"
+                preferred="subfinder httpx nmap whatweb wafw00f wpscan nuclei nikto gau katana ffuf wapiti sqlmap paramspider arjun dalfox"
                 ;;
             *)
-                preferred="subfinder httpx nmap gau katana paramspider arjun ffuf wafw00f nuclei dalfox wapiti sqlmap nikto"
+                preferred="subfinder httpx nmap whatweb gau katana paramspider arjun ffuf wafw00f wpscan nuclei dalfox wapiti sqlmap nikto"
                 ;;
         esac
         ACTIVE_TOOLS="$(reorder_tools_by_preferred_order "$ACTIVE_TOOLS" "$preferred")"
@@ -1164,6 +1164,9 @@ EOF
     fi
 
     # ========== PHASE 1: RECONNAISSANCE ==========
+    gum style --foreground 212 --border double --border-foreground 39 --padding "0 2" "🔎 PHASE 1: RECONNAISSANCE" "Target: $TARGET"
+    echo ""
+
     # Subfinder hanya dieksekusi jika alat tersebut ada di SELECTED_TOOLS (sudah difilter di prompts.sh)
     if tool_enabled "subfinder"; then
         run_step "Subfinder" subfinder -d "$TARGET" -silent __PROXY__ -o "$TARGET_DIR/recon/subfinder.txt" || { abort_target_scan; return 0; }
@@ -1203,7 +1206,11 @@ EOF
                 local waf_payload
                 waf_payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$waf_prompt" '{model:$model,prompt:$prompt,stream:false}')"
                 local waf_resp
-                waf_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT:-30}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$waf_payload" || true)"
+                if [[ "${AI_HTTP_TIMEOUT:-0}" -eq 0 ]]; then
+                    waf_resp="$(ollama_curl -fsS -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$waf_payload" || true)"
+                else
+                    waf_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$waf_payload" || true)"
+                fi
                 
                 local waf_json
                 waf_json="$(echo "$waf_resp" | jq -r '.response // empty' 2>/dev/null || true)"
@@ -1237,6 +1244,93 @@ EOF
         echo "$TARGET" > "$TARGET_DIR/recon/alive.txt"
     fi
     build_baseline_profile
+
+    # MODIFIKASI: Tool pendeteksi CMS (WhatWeb) dan Wpscan
+    if tool_enabled "whatweb" && [[ -s "$TARGET_DIR/recon/alive.txt" ]]; then
+        while IFS= read -r host; do
+            [[ "$host" =~ ^https?:// ]] || continue
+            run_step "WhatWeb ($host)" whatweb "$host" --color=NEVER -a 3 --log-brief="$TARGET_DIR/recon/whatweb.txt" || { abort_target_scan; return 0; }
+        done < "$TARGET_DIR/recon/alive.txt"
+
+        if [[ -s "$TARGET_DIR/recon/whatweb.txt" && "$AI_PLANNER_ENABLED" -eq 1 ]]; then
+            log_msg "AI" "\033[1;35m" "$TARGET" "CMS_ANALYST" "Menganalisa CMS, versi, dan mencari exploit di SearchSploit..."
+            local whatweb_content
+            whatweb_content=$(cat "$TARGET_DIR/recon/whatweb.txt")
+            
+            local cms_prompt
+            cms_prompt=$(cat <<EOF
+Kamu adalah AI CMS & Exploit Analyst.
+Tugasmu:
+1. Baca hasil output WhatWeb berikut.
+2. Temukan CMS yang digunakan (misal: WordPress, Joomla, Drupal) beserta versinya.
+3. Cari teknologi backend penting lainnya beserta versinya (misal: PHP, Apache, Nginx).
+
+[WhatWeb Output]
+$whatweb_content
+
+Kembalikan HANYA JSON valid:
+{
+  "cms_name": "WordPress",
+  "cms_version": "5.8.1",
+  "technologies": ["PHP 7.4.3", "Apache 2.4.41"]
+}
+Jika tidak ada CMS yang terdeteksi, kosongkan nilai cms_name.
+EOF
+)
+            local cms_payload
+            cms_payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$cms_prompt" '{model:$model,prompt:$prompt,stream:false}')"
+            local cms_resp
+            if [[ "${AI_HTTP_TIMEOUT:-0}" -eq 0 ]]; then
+                cms_resp="$(ollama_curl -fsS -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$cms_payload" || true)"
+            else
+                cms_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$cms_payload" || true)"
+            fi
+            
+            local cms_json
+            cms_json="$(echo "$cms_resp" | jq -r '.response // empty' 2>/dev/null || true)"
+            cms_json="$(clean_json_response "$cms_json")"
+            
+            if [[ -n "$cms_json" ]] && echo "$cms_json" | jq -e . >/dev/null 2>&1; then
+                echo "$cms_json" > "$TARGET_DIR/recon/ai_cms_analysis.json"
+                local cms_name
+                cms_name=$(echo "$cms_json" | jq -r '.cms_name // empty')
+                local cms_version
+                cms_version=$(echo "$cms_json" | jq -r '.cms_version // empty')
+                
+                if [[ -n "$cms_name" && "$cms_name" != "null" ]]; then
+                    log_msg "AI" "\033[1;32m" "$TARGET" "CMS_ANALYST" "CMS Terdeteksi: $cms_name $cms_version"
+                    
+                    # Cek SearchSploit jika versi ditemukan
+                    if [[ -n "$cms_version" && "$cms_version" != "null" ]]; then
+                        log_msg "AI" "\033[1;36m" "$TARGET" "CMS_ANALYST" "Mencari exploit $cms_name $cms_version di SearchSploit..."
+                        if command -v searchsploit >/dev/null 2>&1; then
+                            searchsploit "$cms_name $cms_version" > "$TARGET_DIR/recon/searchsploit_cms.txt" || true
+                            if [[ -s "$TARGET_DIR/recon/searchsploit_cms.txt" ]]; then
+                                log_msg "AI" "\033[1;31m" "$TARGET" "CMS_ANALYST" "Ditemukan potensi exploit! Tersimpan di recon/searchsploit_cms.txt"
+                            else
+                                log_msg "AI" "\033[1;32m" "$TARGET" "CMS_ANALYST" "Tidak ditemukan exploit lokal untuk versi ini."
+                            fi
+                        else
+                            log_msg "!" "\033[1;33m" "$TARGET" "SearchSploit" "Tool tidak terinstall, melewati pencarian exploit lokal."
+                        fi
+                    fi
+                    
+                    # Tambahkan flag untuk WPScan jika CMS = WordPress
+                    if echo "$cms_name" | grep -qi "wordpress"; then
+                        log_msg "i" "\033[1;36m" "$TARGET" "Wpscan" "WordPress terdeteksi, mengaktifkan wpscan."
+                        echo "wordpress" > "$TARGET_DIR/recon/is_wordpress.txt"
+                    fi
+                fi
+            fi
+        fi
+    fi
+
+    if tool_enabled "wpscan" && [[ -f "$TARGET_DIR/recon/is_wordpress.txt" ]]; then
+        while IFS= read -r host; do
+            [[ "$host" =~ ^https?:// ]] || continue
+            run_step "WPScan ($host)" wpscan --url "$host" --no-update --disable-tls-checks -o "$TARGET_DIR/scans/wpscan.txt" || { abort_target_scan; return 0; }
+        done < "$TARGET_DIR/recon/alive.txt"
+    fi
 
     if tool_enabled "nmap"; then
         IFS=' ' read -ra nmap_args <<< "$NMAP_ARGS"
@@ -1288,7 +1382,11 @@ EOF
                     while IFS= read -r js_url; do
                         log_msg "i" "\033[1;34m" "$TARGET" "JS_ANALYST" "Menganalisis $js_url"
                         local js_content
-                        js_content=$(curl -sL -m 10 "$js_url" | head -c 5000 || true)
+                        if [[ "${AI_CURL_TIMEOUT:-10}" -eq 0 ]]; then
+                            js_content=$(curl -sL "$js_url" | head -c 5000 || true)
+                        else
+                            js_content=$(curl -sL -m "${AI_CURL_TIMEOUT:-10}" "$js_url" | head -c 5000 || true)
+                        fi
                         
                         if [[ -n "$js_content" ]]; then
                             local js_prompt
@@ -1311,11 +1409,15 @@ Aturan:
 EOF
 )
                             local js_payload
-                            js_payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$js_prompt" '{model:$model,prompt:$prompt,stream:false}')"
-                            local js_resp
-                            js_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT:-30}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$js_payload" || true)"
-                            
-                            local js_json
+            js_payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$js_prompt" '{model:$model,prompt:$prompt,stream:false}')"
+            local js_resp
+            if [[ "${AI_HTTP_TIMEOUT:-0}" -eq 0 ]]; then
+                js_resp="$(ollama_curl -fsS -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$js_payload" || true)"
+            else
+                js_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$js_payload" || true)"
+            fi
+            
+            local js_json
                             js_json="$(echo "$js_resp" | jq -r '.response // empty' 2>/dev/null || true)"
                             js_json="$(clean_json_response "$js_json")"
                             
@@ -1408,6 +1510,151 @@ EOF
         > "$TARGET_DIR/recon/urls_with_params.txt"
     fi
 
+    # ==============================================================================
+    # AI URL FILTERING & CATEGORIZATION (JS_ANALYST & INJECTION ANALYST)
+    # ==============================================================================
+    > "$TARGET_DIR/recon/ai_filtered_sqli.txt"
+    > "$TARGET_DIR/recon/ai_filtered_xss.txt"
+    > "$TARGET_DIR/recon/ai_filtered_lfi.txt"
+    > "$TARGET_DIR/recon/ai_filtered_sensitive.txt"
+    > "$TARGET_DIR/recon/ai_js_endpoints.txt"
+    > "$TARGET_DIR/recon/ai_js_parameters.txt"
+
+    if [[ "$AI_PLANNER_ENABLED" -eq 1 ]] && [[ -s "$TARGET_DIR/recon/urls_with_params.txt" || -s "$TARGET_DIR/recon/all_urls.txt" ]]; then
+        log_msg "AI" "\033[1;35m" "$TARGET" "URL_ANALYST" "Mengkategorikan URL untuk spesialisasi injeksi (SQLi, XSS, LFI) dan menganalisa JS..."
+        
+        # 1. Kategori Injection (SQLi, XSS, LFI, Sensitive)
+        local sample_urls=""
+        if [[ -s "$TARGET_DIR/recon/urls_with_params.txt" ]]; then
+            # Ambil maksimal 100 URL dengan parameter untuk dianalisis (agar tidak over-token)
+            sample_urls=$(head -n 100 "$TARGET_DIR/recon/urls_with_params.txt")
+        else
+            sample_urls=$(head -n 100 "$TARGET_DIR/recon/all_urls.txt")
+        fi
+        
+        if [[ -n "$sample_urls" ]]; then
+            local url_prompt
+            url_prompt=$(cat <<EOF
+Kamu adalah AI Web Security Analyst.
+Tugasmu: Kategorikan URL berikut berdasarkan potensinya untuk serangan injeksi spesifik (SQLi, XSS, LFI) atau jika URL tersebut mengarah ke file/path sensitif (seperti upload.php, admin, dll).
+
+[DAFTAR URL]
+$sample_urls
+
+Kembalikan HANYA JSON valid:
+{
+  "sqli_candidates": ["url1", "url2"],
+  "xss_candidates": ["url1", "url3"],
+  "lfi_candidates": ["url4"],
+  "sensitive_paths": ["url5"]
+}
+
+Aturan:
+- sqli_candidates: URL dengan parameter seperti id, user, page, sort, dll.
+- xss_candidates: URL dengan parameter seperti q, search, keyword, name, dll.
+- lfi_candidates: URL dengan parameter seperti file, doc, page, path, dll (contoh: ?file=xxx).
+- sensitive_paths: URL yang terlihat seperti halaman login, upload, dashboard, config, dll.
+- Jika tidak ada yang cocok untuk kategori tertentu, kosongkan array.
+- Berikan URL persis seperti yang ada di daftar.
+EOF
+)
+            local url_payload
+            url_payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$url_prompt" '{model:$model,prompt:$prompt,stream:false}')"
+            local url_resp
+            if [[ "${AI_HTTP_TIMEOUT:-0}" -eq 0 ]]; then
+                url_resp="$(ollama_curl -fsS -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$url_payload" || true)"
+            else
+                url_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$url_payload" || true)"
+            fi
+            
+            local url_json
+            url_json="$(echo "$url_resp" | jq -r '.response // empty' 2>/dev/null || true)"
+            url_json="$(clean_json_response "$url_json")"
+            
+            if [[ -n "$url_json" ]] && echo "$url_json" | jq -e . >/dev/null 2>&1; then
+                echo "$url_json" | jq -r '.sqli_candidates[]?' > "$TARGET_DIR/recon/ai_filtered_sqli.txt" 2>/dev/null || true
+                echo "$url_json" | jq -r '.xss_candidates[]?' > "$TARGET_DIR/recon/ai_filtered_xss.txt" 2>/dev/null || true
+                echo "$url_json" | jq -r '.lfi_candidates[]?' > "$TARGET_DIR/recon/ai_filtered_lfi.txt" 2>/dev/null || true
+                echo "$url_json" | jq -r '.sensitive_paths[]?' > "$TARGET_DIR/recon/ai_filtered_sensitive.txt" 2>/dev/null || true
+                
+                local count_sqli=$(wc -l < "$TARGET_DIR/recon/ai_filtered_sqli.txt" 2>/dev/null || echo 0)
+                local count_xss=$(wc -l < "$TARGET_DIR/recon/ai_filtered_xss.txt" 2>/dev/null || echo 0)
+                log_msg "AI" "\033[1;32m" "$TARGET" "URL_ANALYST" "Menemukan $count_sqli kandidat SQLi, $count_xss kandidat XSS."
+            fi
+        fi
+        
+        # 2. Analisis File JS (JS_ANALYST)
+        if grep -qi '\.js$' "$TARGET_DIR/recon/all_urls.txt"; then
+            log_msg "AI" "\033[1;35m" "$TARGET" "JS_ANALYST" "Mengekstrak file JavaScript untuk mencari API tersembunyi..."
+            local js_files="$TARGET_DIR/recon/js_files.txt"
+            grep -i '\.js$' "$TARGET_DIR/recon/all_urls.txt" | head -n 3 > "$js_files" || true
+            
+            if [[ -s "$js_files" ]]; then
+                while IFS= read -r js_url; do
+                    log_msg "i" "\033[1;34m" "$TARGET" "JS_ANALYST" "Menganalisis $js_url"
+                    local js_content
+                    if [[ "${AI_CURL_TIMEOUT:-10}" -eq 0 ]]; then
+                        js_content=$(curl -sL "$js_url" | head -c 5000 || true)
+                    else
+                        js_content=$(curl -sL -m "${AI_CURL_TIMEOUT:-10}" "$js_url" | head -c 5000 || true)
+                    fi
+                    
+                    if [[ -n "$js_content" ]]; then
+                        local js_prompt
+                        js_prompt=$(cat <<EOF
+Kamu adalah AI Source Code Analyst (JS_ANALYST).
+Tugasmu: Temukan Endpoint API tersembunyi, path direktori rahasia, atau parameter sensitif dari potongan file JavaScript berikut.
+
+[JavaScript Code]
+$js_content
+
+Kembalikan HANYA JSON valid:
+{
+  "found_endpoints": ["/api/v1/users", "/admin/dashboard"],
+  "found_parameters": ["token", "secret_key"]
+}
+
+Aturan:
+- Hanya kembalikan array string.
+- Jika tidak ada temuan, kosongkan array.
+EOF
+)
+            local js_payload
+            js_payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$js_prompt" '{model:$model,prompt:$prompt,stream:false}')"
+            local js_resp
+            if [[ "${AI_HTTP_TIMEOUT:-0}" -eq 0 ]]; then
+                js_resp="$(ollama_curl -fsS -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$js_payload" || true)"
+            else
+                js_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$js_payload" || true)"
+            fi
+            
+            local js_json
+                        js_json="$(echo "$js_resp" | jq -r '.response // empty' 2>/dev/null || true)"
+                        js_json="$(clean_json_response "$js_json")"
+                        
+                        if [[ -n "$js_json" ]] && echo "$js_json" | jq -e . >/dev/null 2>&1; then
+                            echo "$js_json" | jq -r '.found_endpoints[]?' >> "$TARGET_DIR/recon/ai_js_endpoints.txt" 2>/dev/null || true
+                            echo "$js_json" | jq -r '.found_parameters[]?' >> "$TARGET_DIR/recon/ai_js_parameters.txt" 2>/dev/null || true
+                        fi
+                    fi
+                done < "$js_files"
+                
+                # Tambahkan endpoint yang ditemukan ke list global jika ada
+                if [[ -s "$TARGET_DIR/recon/ai_js_endpoints.txt" ]]; then
+                    sort -u -o "$TARGET_DIR/recon/ai_js_endpoints.txt" "$TARGET_DIR/recon/ai_js_endpoints.txt"
+                    local found_js_ep
+                    found_js_ep=$(wc -l < "$TARGET_DIR/recon/ai_js_endpoints.txt" 2>/dev/null || echo 0)
+                    log_msg "AI" "\033[1;32m" "$TARGET" "JS_ANALYST" "Menemukan $found_js_ep endpoint API rahasia dari JS!"
+                    
+                    local base_url
+                    base_url=$(echo "$TARGET" | sed -e 's|https*://||' -e 's|/.*||')
+                    awk -v base="http://$base_url" '{if ($0 !~ /^http/) print base $0; else print $0}' "$TARGET_DIR/recon/ai_js_endpoints.txt" >> "$TARGET_DIR/recon/all_urls.txt"
+                    sort -u -o "$TARGET_DIR/recon/all_urls.txt" "$TARGET_DIR/recon/all_urls.txt"
+                fi
+            fi
+        fi
+    fi
+
     # Re-planning setelah recon agar fase vulnerability lebih kontekstual.
     ai_replan_after_recon
 
@@ -1417,14 +1664,21 @@ EOF
         run_step "Nuclei" nuclei -l "$TARGET_DIR/recon/alive.txt" -silent "${nuclei_rl_arr[@]}" __PROXY__ -o "$TARGET_DIR/vulnerabilities/nuclei.txt" || { abort_target_scan; return 0; }
     fi
 
-    # Dalfox hanya jika ada URL valid dengan parameter
+    # Dalfox hanya jika ada URL valid dengan parameter (Prioritaskan AI Filtered XSS jika ada)
     if tool_enabled "dalfox" && [[ -s "$TARGET_DIR/recon/urls_with_params.txt" ]]; then
-        # Filter static files for Dalfox as well
-        grep -ivE '\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|ico|pdf|zip|tar|gz|rar|mp4|mp3|avi|wmv)\?.*=' "$TARGET_DIR/recon/urls_with_params.txt" > "$TARGET_DIR/recon/urls_for_dalfox.txt" || true
+        local dalfox_target_list="$TARGET_DIR/recon/urls_for_dalfox.txt"
         
-        if [[ -s "$TARGET_DIR/recon/urls_for_dalfox.txt" ]]; then
+        if [[ "$AI_PLANNER_ENABLED" -eq 1 && -s "$TARGET_DIR/recon/ai_filtered_xss.txt" ]]; then
+            log_msg "i" "\033[1;36m" "$TARGET" "Dalfox" "Menggunakan target spesifik XSS hasil filter AI."
+            cp "$TARGET_DIR/recon/ai_filtered_xss.txt" "$dalfox_target_list"
+        else
+            # Filter static files for Dalfox as fallback
+            grep -ivE '\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|ico|pdf|zip|tar|gz|rar|mp4|mp3|avi|wmv)\?.*=' "$TARGET_DIR/recon/urls_with_params.txt" > "$dalfox_target_list" || true
+        fi
+        
+        if [[ -s "$dalfox_target_list" ]]; then
             IFS=' ' read -ra dalfox_rl_arr <<< "$DALFOX_RL"
-            run_step "Dalfox" dalfox file "$TARGET_DIR/recon/urls_for_dalfox.txt" --silence "${dalfox_rl_arr[@]}" __PROXY__ --output "$TARGET_DIR/vulnerabilities/xss.txt" || { abort_target_scan; return 0; }
+            run_step "Dalfox" dalfox file "$dalfox_target_list" --silence "${dalfox_rl_arr[@]}" __PROXY__ --output "$TARGET_DIR/vulnerabilities/xss.txt" || { abort_target_scan; return 0; }
         else
             log_msg "i" "\033[1;33m" "$TARGET" "Dalfox" "All parameterized URLs were static assets (.js, .css, etc). Skipping Dalfox."
         fi
@@ -1439,12 +1693,19 @@ EOF
         done < "$TARGET_DIR/recon/alive.txt"
     fi
 
-    # MODIFIKASI 3: SQLMap dengan argumen kustom dan hanya URL valid dengan parameter
+    # MODIFIKASI 3: SQLMap dengan argumen kustom dan hanya URL valid dengan parameter (Prioritaskan AI Filtered SQLi)
     if tool_enabled "sqlmap" && [[ -s "$TARGET_DIR/recon/urls_with_params.txt" ]]; then
-        # Filter out static extensions (.js, .css, .png, .jpg, etc) before passing to SQLMap
-        grep -ivE '\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|ico|pdf|zip|tar|gz|rar|mp4|mp3|avi|wmv)\?.*=' "$TARGET_DIR/recon/urls_with_params.txt" > "$TARGET_DIR/recon/urls_for_sqlmap.txt" || true
+        local sqlmap_target_list="$TARGET_DIR/recon/urls_for_sqlmap.txt"
         
-        if [[ -s "$TARGET_DIR/recon/urls_for_sqlmap.txt" ]]; then
+        if [[ "$AI_PLANNER_ENABLED" -eq 1 && -s "$TARGET_DIR/recon/ai_filtered_sqli.txt" ]]; then
+            log_msg "i" "\033[1;36m" "$TARGET" "SQLMap" "Menggunakan target spesifik SQLi hasil filter AI."
+            cp "$TARGET_DIR/recon/ai_filtered_sqli.txt" "$sqlmap_target_list"
+        else
+            # Filter out static extensions (.js, .css, .png, .jpg, etc) before passing to SQLMap
+            grep -ivE '\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|ico|pdf|zip|tar|gz|rar|mp4|mp3|avi|wmv)\?.*=' "$TARGET_DIR/recon/urls_with_params.txt" > "$sqlmap_target_list" || true
+        fi
+        
+        if [[ -s "$sqlmap_target_list" ]]; then
             IFS=' ' read -ra sqlmap_args <<< "$SQLMAP_ARGS"
             IFS=' ' read -ra sqlmap_rl_arr <<< "$SQLMAP_RL"
             # Cek apakah pengguna menggunakan -u (single URL) dalam argumen
@@ -1452,10 +1713,10 @@ EOF
                 # Mode satu per satu URL
                 while IFS= read -r url; do
                     run_step "SQLMap ($url)" sqlmap -u "$url" "${sqlmap_args[@]}" "${sqlmap_rl_arr[@]}" __PROXY__ --output-dir="$TARGET_DIR/vulnerabilities/sqlmap" || { abort_target_scan; return 0; }
-                done < "$TARGET_DIR/recon/urls_for_sqlmap.txt"
+                done < "$sqlmap_target_list"
             else
                 # Mode batch dengan file (-m)
-                run_step "SQLMap" sqlmap -m "$TARGET_DIR/recon/urls_for_sqlmap.txt" "${sqlmap_args[@]}" "${sqlmap_rl_arr[@]}" __PROXY__ --output-dir="$TARGET_DIR/vulnerabilities/sqlmap" || { abort_target_scan; return 0; }
+                run_step "SQLMap" sqlmap -m "$sqlmap_target_list" "${sqlmap_args[@]}" "${sqlmap_rl_arr[@]}" __PROXY__ --output-dir="$TARGET_DIR/vulnerabilities/sqlmap" || { abort_target_scan; return 0; }
             fi
         else
             log_msg "i" "\033[1;33m" "$TARGET" "SQLMap" "All parameterized URLs were static assets (.js, .css, etc). Skipping SQLMap."

@@ -2,7 +2,8 @@
 # Automated Vulnerability Auditing & Triage
 # ==============================================================================
 
-set +e
+set -euo pipefail
+shopt -s nullglob
 
 gum style --margin "1 0" --foreground 212 "## 🔍 Starting Automated Auditing & Triage..."
 
@@ -14,7 +15,50 @@ fi
 
 export TOTAL_CONFIRMED_BUGS=0
 AUDIT_SUMMARY_FILE="$OUTPUT_BASE/audited_summary.txt"
-> "$AUDIT_SUMMARY_FILE"
+: > "$AUDIT_SUMMARY_FILE"
+GLOBAL_AUDIT_JSONL="$OUTPUT_BASE/audited_findings_all.jsonl"
+GLOBAL_AUDIT_JSON="$OUTPUT_BASE/audited_findings_all.json"
+: > "$GLOBAL_AUDIT_JSONL"
+
+extract_first_url() {
+    local line="$1"
+    printf '%s' "$line" | grep -oE 'https?://[^[:space:]]+' | head -n 1 || true
+}
+
+extract_first_param() {
+    local url="$1"
+    printf '%s' "$url" | sed -n 's/.*[?&]\([^=&?#]*\)=.*/\1/p'
+}
+
+append_audit_finding() {
+    local txt_file="$1"
+    local jsonl_file="$2"
+    local target="$3"
+    local source="$4"
+    local severity="$5"
+    local url="$6"
+    local param="$7"
+    local evidence="$8"
+    local repro_command="$9"
+    local line=""
+
+    [[ -z "$url" || "$url" == "null" ]] && url="N/A"
+    [[ -z "$param" || "$param" == "null" ]] && param="N/A"
+    [[ -z "$repro_command" || "$repro_command" == "null" ]] && repro_command="manual_verification_required"
+
+    line="[$source][$severity] $evidence | URL: $url | Param: $param | Repro: $repro_command"
+    echo "$line" >> "$txt_file"
+
+    jq -nc \
+      --arg target "$target" \
+      --arg url "$url" \
+      --arg param "$param" \
+      --arg evidence "$evidence" \
+      --arg severity "$severity" \
+      --arg repro_command "$repro_command" \
+      '{target:$target,url:$url,param:$param,evidence:$evidence,severity:$severity,repro_command:$repro_command}' \
+      >> "$jsonl_file"
+}
 
 score_line() {
     local line="$1"
@@ -33,50 +77,95 @@ score_line() {
 
 for target_dir in "$OUTPUT_BASE/targets/"*; do
     [[ -d "$target_dir" ]] || continue
-    target_name=$(basename "$target_dir")
+    target_name="$(basename "$target_dir")"
     
     AUDIT_FILE="$target_dir/vulnerabilities/audited_confirmed.txt"
-    > "$AUDIT_FILE"
+    AUDIT_JSONL_FILE="$target_dir/vulnerabilities/audit_findings.jsonl"
+    AUDIT_JSON_FILE="$target_dir/vulnerabilities/audit_findings.json"
+    : > "$AUDIT_FILE"
+    : > "$AUDIT_JSONL_FILE"
     
     log_msg ">" "\033[1;36m" "$target_name" "AUDIT" "Verifying raw vulnerability logs..."
     
     # 1. Audit SQLMap: Mencari indikasi injeksi sukses ([CRITICAL] atau adanya file target.txt)
     if [[ -d "$target_dir/vulnerabilities/sqlmap" ]]; then
-        find "$target_dir/vulnerabilities/sqlmap" -name "log" -type f 2>/dev/null | while read -r logfile; do
+        while IFS= read -r logfile; do
             # Validasi ketat: Hanya setuju jika berhasil mengekstrak nama database (bukti eksploitasi bisa dijalankan)
             if grep -qE "fetching database names|available databases|\[\*\] information_schema" "$logfile"; then
-                echo "[SQLi] Confirmed SQL Injection in URL/Parameter found by SQLMap (Database extracted)" >> "$AUDIT_FILE"
+                # Ekstrak URL dan parameter dari file target.txt jika ada
+                targetfile="$(dirname "$logfile")/target.txt"
+                target_url="N/A"
+                param="Unknown"
+                if [[ -f "$targetfile" ]]; then
+                    target_url="$(head -n 1 "$targetfile")"
+                    param="$(grep "Parameter:" "$logfile" | head -n 1 | awk -F "Parameter: " '{print $2}' | awk '{print $1}')"
+                    [[ -z "$param" ]] && param="Unknown"
+                fi
+                append_audit_finding \
+                    "$AUDIT_FILE" "$AUDIT_JSONL_FILE" "$target_name" "SQLi" "critical" \
+                    "$target_url" "$param" \
+                    "Confirmed SQL Injection (database extraction evidence found)." \
+                    "sqlmap -u \"$target_url\" -p \"$param\" --batch --dbs"
             fi
-        done
+        done < <(find "$target_dir/vulnerabilities/sqlmap" -name "log" -type f 2>/dev/null)
         
         # Jika ada file target.txt, pastikan log aslinya juga menunjukkan database
-        find "$target_dir/vulnerabilities/sqlmap" -name "target.txt" -type f 2>/dev/null | while read -r targetfile; do
-            logfile=$(dirname "$targetfile")/log
+        while IFS= read -r targetfile; do
+            logfile="$(dirname "$targetfile")/log"
             if [[ -f "$logfile" ]] && grep -qE "fetching database names|available databases" "$logfile"; then
-                echo "[SQLi] SQL Injection Confirmed. Payload tested successfully." >> "$AUDIT_FILE"
+                target_url="$(head -n 1 "$targetfile")"
+                param="$(grep "Parameter:" "$logfile" | head -n 1 | awk -F "Parameter: " '{print $2}' | awk '{print $1}')"
+                [[ -z "$param" ]] && param="Unknown"
+                # Hindari duplikat jika sudah dimasukkan oleh loop sebelumnya
+                if ! grep -qF "URL: $target_url | Param: $param" "$AUDIT_FILE"; then
+                    append_audit_finding \
+                        "$AUDIT_FILE" "$AUDIT_JSONL_FILE" "$target_name" "SQLi" "critical" \
+                        "$target_url" "$param" \
+                        "Confirmed SQL Injection (duplicate-safe SQLMap confirmation)." \
+                        "sqlmap -u \"$target_url\" -p \"$param\" --batch --dbs"
+                fi
             fi
-        done
+        done < <(find "$target_dir/vulnerabilities/sqlmap" -name "target.txt" -type f 2>/dev/null)
     fi
     
     # 2. Audit Dalfox (XSS): Hanya menyimpan yang benar-benar memiliki status POC (Proof of Concept)
     if [[ -s "$target_dir/vulnerabilities/xss.txt" ]]; then
-        if grep -q "POC" "$target_dir/vulnerabilities/xss.txt" || grep -q "Vulnerable" "$target_dir/vulnerabilities/xss.txt"; then
-            echo "[XSS] Confirmed Cross-Site Scripting. POC generated by Dalfox." >> "$AUDIT_FILE"
-        fi
+        while IFS= read -r xss_line; do
+            # Mencoba mengekstrak URL dari output Dalfox (biasanya diawali http)
+            xss_url="$(extract_first_url "$xss_line")"
+            xss_param="$(extract_first_param "$xss_url")"
+            [[ -z "$xss_param" ]] && xss_param="Unknown"
+            append_audit_finding \
+                "$AUDIT_FILE" "$AUDIT_JSONL_FILE" "$target_name" "XSS" "high" \
+                "${xss_url:-N/A}" "$xss_param" \
+                "Confirmed Cross-Site Scripting POC from Dalfox logs." \
+                "dalfox url \"${xss_url:-http://$target_name}\""
+        done < <(grep -E "POC|Vulnerable" "$target_dir/vulnerabilities/xss.txt" || true)
     fi
     
     # 3. Audit Nuclei: Menyaring hanya temuan [critical] dan [high] untuk mengabaikan false-positive/informational
     if [[ -s "$target_dir/vulnerabilities/nuclei.txt" ]]; then
-        grep -iE '\[(high|critical)\]' "$target_dir/vulnerabilities/nuclei.txt" | while read -r line; do
-            echo "[Nuclei] Confirmed High/Critical: $line" >> "$AUDIT_FILE"
-        done
+        while IFS= read -r line; do
+            nuclei_url="$(extract_first_url "$line")"
+            sev="high"
+            echo "$line" | grep -qi '\[critical\]' && sev="critical"
+            append_audit_finding \
+                "$AUDIT_FILE" "$AUDIT_JSONL_FILE" "$target_name" "Nuclei" "$sev" \
+                "${nuclei_url:-N/A}" "N/A" \
+                "Confirmed ${sev} severity finding: $line" \
+                "nuclei -u \"${nuclei_url:-http://$target_name}\" -severity high,critical -silent"
+        done < <(grep -iE '\[(high|critical)\]' "$target_dir/vulnerabilities/nuclei.txt" || true)
     fi
     
     # 4. Audit Wapiti: Mencari kata kunci Vulnerability yang valid (bukan sekedar info)
     for wfile in "$target_dir/vulnerabilities"/wapiti_*.txt; do
         [[ -f "$wfile" ]] || continue
         if grep -qi "Vulnerability found" "$wfile" || grep -qi "\[+\]" "$wfile"; then
-            echo "[Wapiti] Potential Injection confirmed in Wapiti logs" >> "$AUDIT_FILE"
+            append_audit_finding \
+                "$AUDIT_FILE" "$AUDIT_JSONL_FILE" "$target_name" "Wapiti" "medium" \
+                "N/A" "N/A" \
+                "Potential injection confirmed in Wapiti logs ($(basename "$wfile"))." \
+                "wapiti -u \"http://$target_name\" -f txt"
         fi
     done
     
@@ -84,25 +173,41 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
     for ffile in "$target_dir/recon"/ffuf_*.json; do
         [[ -f "$ffile" ]] || continue
         # Menggunakan jq untuk mencari endpoint dengan status 200
-        jq -r '.results[] | select(.status == 200) | .url' "$ffile" 2>/dev/null | grep -iE '(admin|config|backup|api|secret|login|db|sql|env|\.git|\.bak|\.old|\.zip|\.tar)' | while read -r sensitive_url; do
-            echo "[FFUF] Confirmed Exposed Sensitive Path: $sensitive_url" >> "$AUDIT_FILE"
-        done
+        while IFS= read -r sensitive_url; do
+            append_audit_finding \
+                "$AUDIT_FILE" "$AUDIT_JSONL_FILE" "$target_name" "FFUF" "medium" \
+                "$sensitive_url" "N/A" \
+                "Confirmed exposed sensitive path from FFUF output." \
+                "ffuf -u \"$sensitive_url\" -w <wordlist>"
+        done < <(jq -r '.results[] | select(.status == 200) | .url' "$ffile" 2>/dev/null | grep -iE '(admin|config|backup|api|secret|login|db|sql|env|\.git|\.bak|\.old|\.zip|\.tar)' || true)
     done
 
     # 6. Audit NMAP: Mengekstrak CVE, Exploit, dan skor kerentanan
     if [[ -f "$target_dir/scans/nmap.nmap" ]]; then
         # Menggunakan grep dengan regex yang lebih longgar untuk menangkap CVE dan vulners
-        grep -iE "VULNERABLE|EXPLOIT|vulners:|CVE-[0-9]{4}-[0-9]+" "$target_dir/scans/nmap.nmap" | while read -r nmap_vuln; do
+        while IFS= read -r nmap_vuln; do
             # Bersihkan output (hapus karakter | dan spasi berlebih di awal)
-            clean_vuln=$(echo "$nmap_vuln" | sed 's/^[|[:space:]]*//')
-            echo "[Nmap] Vulnerability Detected: $clean_vuln" >> "$AUDIT_FILE"
-        done
+            clean_vuln="$(echo "$nmap_vuln" | sed 's/^[|[:space:]]*//')"
+            nmap_sev="medium"
+            echo "$clean_vuln" | grep -qE 'CVE-[0-9]{4}-[0-9]+' && nmap_sev="high"
+            append_audit_finding \
+                "$AUDIT_FILE" "$AUDIT_JSONL_FILE" "$target_name" "Nmap" "$nmap_sev" \
+                "$target_name" "N/A" \
+                "Nmap vulnerability signal: $clean_vuln" \
+                "nmap -sV --script vuln $target_name"
+        done < <(grep -iE "VULNERABLE|EXPLOIT|vulners:|CVE-[0-9]{4}-[0-9]+" "$target_dir/scans/nmap.nmap" || true)
     fi
 
     # Menghitung hasil dan merapikan output
     if [[ -s "$AUDIT_FILE" ]]; then
         # Buang duplikat log (sort -u) jika tools mendeteksi hal yang sama berkali-kali
         sort -u -o "$AUDIT_FILE" "$AUDIT_FILE"
+        if [[ -s "$AUDIT_JSONL_FILE" ]]; then
+            jq -s 'unique_by(.target,.url,.param,.evidence,.severity,.repro_command)' "$AUDIT_JSONL_FILE" > "$AUDIT_JSON_FILE" || echo "[]" > "$AUDIT_JSON_FILE"
+            jq -c '.[]' "$AUDIT_JSON_FILE" >> "$GLOBAL_AUDIT_JSONL"
+        else
+            echo "[]" > "$AUDIT_JSON_FILE"
+        fi
 
         SCORED_FILE="$target_dir/vulnerabilities/scored_findings.tsv"
         DEDUP_FILE="$target_dir/vulnerabilities/dedup_findings.txt"
@@ -130,6 +235,7 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
         bug_count=$(wc -l < "$AUDIT_FILE")
         
         log_msg "✓" "\033[1;32m" "$target_name" "AUDIT" "Found $bug_count confirmed vulnerabilities!"
+        log_msg "i" "\033[1;36m" "$target_name" "AUDIT" "Standardized JSON saved: vulnerabilities/audit_findings.json"
         
         echo "--- $target_name ---" >> "$AUDIT_SUMMARY_FILE"
         cat "$AUDIT_FILE" >> "$AUDIT_SUMMARY_FILE"
@@ -139,6 +245,7 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
     else
         log_msg "✓" "\033[1;32m" "$target_name" "AUDIT" "Clean. No critical bugs confirmed."
         rm -f "$AUDIT_FILE"
+        echo "[]" > "$AUDIT_JSON_FILE"
     fi
 
     # --- INTEGRASI AUTONOMOUS AI PENTESTER ---
@@ -207,7 +314,8 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
                 chmod +x "$OVERLORD_SCRIPT" 2>/dev/null || true
                 
                 # Biarkan AI Overlord mengambil alih terminal sementara waktu
-                bash "$OVERLORD_SCRIPT" --target "$target_name" --log-dir "$target_dir" || true
+                # Tambahkan tee agar output muncul di terminal dan juga tersimpan di TARGET_LOG
+                bash "$OVERLORD_SCRIPT" --target "$target_name" --log-dir "$target_dir" 2>&1 | tee -a "$TARGET_LOG" || true
                 log_msg "🏁" "\033[1;32m" "$target_name" "OVERLORD" "Fase 4: Overlord selesai. Menyerahkan kembali kendali ke sistem."
             fi
         else
@@ -215,6 +323,12 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
         fi
     fi
 done
+
+if [[ -s "$GLOBAL_AUDIT_JSONL" ]]; then
+    jq -s '.' "$GLOBAL_AUDIT_JSONL" > "$GLOBAL_AUDIT_JSON" || echo "[]" > "$GLOBAL_AUDIT_JSON"
+else
+    echo "[]" > "$GLOBAL_AUDIT_JSON"
+fi
 
 if [[ $TOTAL_CONFIRMED_BUGS -gt 0 ]]; then
     gum style --foreground 46 --border normal --border-foreground 46 --padding "0 2" "🎯 Automated Auditing Complete! $TOTAL_CONFIRMED_BUGS valid bugs confirmed."

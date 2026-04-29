@@ -2,7 +2,7 @@
 # Batch Execution (Rolling Queue / Worker Pool)
 # ==============================================================================
 echo ""
-gum style --foreground 212 --border normal --border-foreground 212 --padding "0 2" "🚀 Starting Batch Execution ($CONCURRENCY concurrent domains max)..."
+gum style --foreground 212 --border rounded --border-foreground 99 --padding "0 2" "🚀 Initiating Batch Execution" "Mode: $CONCURRENCY concurrent domains max"
 echo ""
 
 mapfile -t targets < "$TARGETS_FILE"
@@ -40,13 +40,13 @@ done
 
 # Wait for remaining background processes
 echo ""
-gum style --foreground 212 --border normal --border-foreground 212 --padding "0 2" "⏳ All targets dispatched. Waiting for background tasks to complete..."
+gum style --foreground 204 --border normal --border-foreground 240 --padding "0 2" "⏳ All targets dispatched. Waiting for background tasks to complete..."
 while [[ $(jobs -p | wc -l) -gt 0 ]]; do
     if ! wait -n 2>/dev/null; then
         :
     fi
 done
 echo ""
-gum style --foreground 46 --border double --border-foreground 46 --padding "0 2" "✨ All executions complete! ✨"
+gum style --foreground 46 --border double --border-foreground 46 --align center --padding "1 4" "✨ PHASE COMPLETE ✨" "All concurrent executions finished successfully."
 
 unset BATCH_ID

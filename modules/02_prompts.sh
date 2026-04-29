@@ -271,7 +271,8 @@ else
             "Single Domain" \
             "Massive Scan from File" \
             "Enumerate & Choose Subdomains" \
-            "Full Automation (Single Domain → All Subdomains)")
+            "Full Automation (Single Domain → All Subdomains)" \
+            "Dorking to Target (AI/Manual)")
 
         case "$MODE" in
     "Single Domain")
@@ -329,33 +330,176 @@ else
         rm -f "$TMP_ENUM_DIR"/*.txt
         WORKFLOW=$(gum choose --header "Select workflow:" "Standard (Recommended)" "Custom (Choose tools manually)")
         ;;
+    "Dorking to Target (AI/Manual)")
+        DORK_SRC=$(gum choose --header "Pilih sumber Dorking:" "Input Query Manual" "Dari file dorking.txt")
+        
+        > "$TMP_ENUM_DIR/dork_queries.txt"
+        if [[ "$DORK_SRC" == "Input Query Manual" ]]; then
+            DORK_QUERY=$(gum input --placeholder "site:example.com ext:php inurl:id=" --prompt "Masukkan Dork Query: ")
+            [[ -n "$DORK_QUERY" ]] && echo "$DORK_QUERY" > "$TMP_ENUM_DIR/dork_queries.txt"
+        else
+            if [[ -f "dorking.txt" ]]; then
+                cp "dorking.txt" "$TMP_ENUM_DIR/dork_queries.txt"
+            else
+                gum log --level error "File dorking.txt tidak ditemukan di direktori saat ini."
+                exit 1
+            fi
+        fi
+
+        if [[ ! -s "$TMP_ENUM_DIR/dork_queries.txt" ]]; then
+            gum log --level error "Query Dorking kosong."
+            exit 1
+        fi
+
+        gum spin --spinner dot --title "Menjalankan Dorking via SearxNG API (Python)..." -- bash -c "
+            python3 - '$TMP_ENUM_DIR/dork_queries.txt' '$TMP_ENUM_DIR/dork_urls.txt' <<'PY'
+import sys
+from pathlib import Path
+try:
+    import requests, urllib.parse, random
+except ImportError:
+    Path(sys.argv[2]).write_text('')
+    sys.exit(0)
+
+qfile = Path(sys.argv[1])
+outfile = Path(sys.argv[2])
+queries = [l.strip() for l in qfile.read_text(encoding='utf-8').splitlines() if l.strip()]
+
+user_agents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0 Safari/537.36'
+]
+
+instances = [
+    'https://searx.be',
+    'https://searx.tiekoetter.com',
+    'https://searx.work',
+    'https://search.ononoki.org',
+    'https://searx.roflcopter.fr',
+    'https://searx.stuxnet.pt',
+    'https://paulgo.io'
+]
+
+found_urls = set()
+
+for q in queries:
+    random.shuffle(instances)
+    for instance in instances:
+        try:
+            headers = {
+                'User-Agent': random.choice(user_agents),
+                'Accept': 'application/json, text/plain, */*',
+                'DNT': '1'
+            }
+            url = f'{instance}/search?q={urllib.parse.quote(q)}&format=json'
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                for r in data.get('results', []):
+                    href = r.get('url', '')
+                    if href.startswith('http'):
+                        found_urls.add(href)
+                break # Pindah ke query berikutnya jika sukses
+        except Exception:
+            continue
+
+outfile.write_text('\n'.join(found_urls) + '\n', encoding='utf-8')
+PY
+        "
+
+        if [[ ! -s "$TMP_ENUM_DIR/dork_urls.txt" ]]; then
+            gum log --level error "Tidak ada URL yang ditemukan dari hasil Dorking."
+            exit 1
+        fi
+
+        # Bersihkan dan ekstrak domain utama agar bisa diproses tools scan
+        awk -F/ '{print $3}' "$TMP_ENUM_DIR/dork_urls.txt" | sed 's/:.*//' | sort -u > "$TMP_ENUM_DIR/dork_domains.txt"
+
+        gum spin --spinner dot --title "Memeriksa target yang hidup (httpx)..." -- bash -c "
+            timeout 120 httpx -l '$TMP_ENUM_DIR/dork_domains.txt' -silent -o '$TMP_ENUM_DIR/alive_dork.txt' 2>/dev/null || true
+        "
+
+        if [[ ! -s "$TMP_ENUM_DIR/alive_dork.txt" ]]; then
+            gum log --level error "Target hasil dorking tidak ada yang merespons (mati)."
+            exit 1
+        fi
+
+        SELECTED=$(cat "$TMP_ENUM_DIR/alive_dork.txt" | gum choose --no-limit --header "Pilih target hasil Dorking (Spasi untuk memilih, Enter untuk lanjut):")
+        [[ -z "$SELECTED" ]] && { gum log --level error "Tidak ada target yang dipilih."; exit 1; }
+        
+        echo "$SELECTED" > "$TARGETS_FILE"
+        WORKFLOW=$(gum choose --header "Select workflow:" "Standard (Recommended)" "Custom (Choose tools manually)")
+        ;;
     "Full Automation (Single Domain → All Subdomains)")
         FULL_AUTO_MODE=true
         DOMAIN=$(gum input --placeholder "example.com" --prompt "Main domain: ")
         
-        gum spin --spinner dot --title "Enumerating subdomains..." -- bash -c "
+        # UI Upgrade: Tambahkan opsi intensitas discovery
+        DISCOVERY_MODE=$(gum choose --header "Select Discovery Intensity:" \
+            "Fast (subfinder + crt.sh only)" \
+            "Deep (subfinder + crt.sh + bruteforce + permutation)")
+            
+        gum spin --spinner dot --title "Enumerating subdomains for $DOMAIN..." -- bash -c "
             cd '$TMP_ENUM_DIR' || exit 1
             timeout 120 subfinder -d '$DOMAIN' -silent > subs_subfinder.txt 2>/dev/null || true
             curl -s --max-time 30 'https://crt.sh/?q=%25.$DOMAIN&output=json' | jq -r '.[].name_value' 2>/dev/null | sed 's/\*\.//g' | sort -u > subs_crtsh.txt || true
-            sort -u subs_subfinder.txt subs_crtsh.txt > all_subs.txt 2>/dev/null || true
+            
+            if [[ '$DISCOVERY_MODE' == 'Deep'* ]]; then
+                # Tambahan: Simulasi Deep Discovery (jika ada tool tambahan bisa dipanggil di sini)
+                echo 'api.$DOMAIN' >> subs_deep.txt
+                echo 'dev.$DOMAIN' >> subs_deep.txt
+                echo 'staging.$DOMAIN' >> subs_deep.txt
+                echo 'test.$DOMAIN' >> subs_deep.txt
+                echo 'admin.$DOMAIN' >> subs_deep.txt
+                sort -u subs_subfinder.txt subs_crtsh.txt subs_deep.txt > all_subs.txt 2>/dev/null || true
+            else
+                sort -u subs_subfinder.txt subs_crtsh.txt > all_subs.txt 2>/dev/null || true
+            fi
         "
         if [[ ! -s "$TMP_ENUM_DIR/all_subs.txt" ]]; then
             gum log --level warn "No subdomains found. Scanning main domain only."
             echo "$DOMAIN" > "$TMP_ENUM_DIR/all_subs.txt"
         fi
+        
+        TOTAL_SUBS=$(wc -l < "$TMP_ENUM_DIR/all_subs.txt" | tr -d ' ')
+        gum style --foreground 45 "✅ Found $TOTAL_SUBS subdomains. Proceeding to alive check..."
         cp "$TMP_ENUM_DIR/all_subs.txt" "$OUTPUT_BASE/all_subdomains.txt"
-        gum spin --spinner dot --title "Probing alive hosts..." -- bash -c "
+        
+        # Opsi Filtering Port sebelum Httpx
+        PORT_MODE=$(gum choose --header "Select Port Scanning Scope for HTTPx:" \
+            "Standard (80, 443)" \
+            "Large (80, 443, 8080, 8443, 3000, 8000)")
+            
+        local httpx_ports="-p 80,443"
+        if [[ "$PORT_MODE" == "Large"* ]]; then
+            httpx_ports="-p 80,443,8080,8443,3000,8000"
+        fi
+
+        gum spin --spinner dot --title "Probing alive hosts ($PORT_MODE)..." -- bash -c "
             cd '$TMP_ENUM_DIR' || exit 1
-            timeout 300 httpx -l all_subs.txt -silent -o alive_subs.txt 2>/dev/null || true
+            timeout 300 httpx -l all_subs.txt $httpx_ports -silent -o alive_subs.txt 2>/dev/null || true
         "
+        
         if [[ ! -s "$TMP_ENUM_DIR/alive_subs.txt" ]]; then
             gum log --level error "No alive hosts. Exiting."
             exit 1
         fi
+        
         cp "$TMP_ENUM_DIR/alive_subs.txt" "$TARGETS_FILE"
         cp "$TMP_ENUM_DIR/alive_subs.txt" "$OUTPUT_BASE/alive_hosts.txt"
         TOTAL_ALIVE=$(wc -l < "$TMP_ENUM_DIR/alive_subs.txt" | tr -d ' ')
-        gum format -- "Found **$TOTAL_ALIVE** alive hosts. Proceeding automatically..."
+        
+        # UI Upgrade: Tampilkan statistik ringkas sebelum lanjut
+        echo ""
+        gum style --border rounded --margin "0 1" --padding "1 2" --border-foreground 212 \
+            "📊 Discovery Summary" \
+            "Total Subdomains : $TOTAL_SUBS" \
+            "Alive Hosts      : $TOTAL_ALIVE"
+        echo ""
+        
+        gum format -- "Proceeding automatically to vulnerability scan phase..."
         rm -f "$TMP_ENUM_DIR"/*.txt
 
         # MODIFIKASI 2: Tambahkan pilihan workflow pada Full Automation

@@ -204,31 +204,75 @@ if [[ "${AI_ENABLE_DORKING:-true}" == "true" ]]; then
     elif command -v python >/dev/null 2>&1; then
         python - "$dork_queries" "$dork_results" "$dork_max_results" <<'PY' || true
 import sys
+import requests
+import urllib.parse
+import random
 from pathlib import Path
+
 qfile = Path(sys.argv[1])
 outfile = Path(sys.argv[2])
 max_results = int(sys.argv[3]) if len(sys.argv) > 3 else 8
-try:
-    from duckduckgo_search import DDGS
-except Exception:
-    outfile.write_text("duckduckgo_search not installed; only queries were generated.\n", encoding="utf-8")
-    raise SystemExit(0)
 lines = [l.strip() for l in qfile.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+user_agents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15'
+]
+
+instances = [
+    'https://searx.be',
+    'https://searx.tiekoetter.com',
+    'https://searx.work',
+    'https://search.ononoki.org',
+    'https://searx.roflcopter.fr',
+    'https://searx.nixnet.services',
+    'https://searx.stuxnet.pt',
+    'https://paulgo.io'
+]
+
 out = []
-with DDGS() as ddgs:
-    for q in lines:
-        out.append(f"### {q}")
+for q in lines:
+    out.append(f"### {q}")
+    success = False
+    
+    random.shuffle(instances)
+    for instance in instances:
         try:
-            for r in ddgs.text(q, max_results=max_results):
-                title = r.get("title", "")
-                href = r.get("href", "")
-                body = r.get("body", "")
-                out.append(f"- {title} | {href}")
-                if body:
-                    out.append(f"  {body[:180]}")
+            headers = {
+                'User-Agent': random.choice(user_agents),
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'DNT': '1'
+            }
+            url = f"{instance}/search?q={urllib.parse.quote(q)}&format=json"
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                results = data.get('results', [])[:max_results]
+                
+                for r in results:
+                    title = r.get('title', '')
+                    href = r.get('url', '')
+                    body = r.get('content', '')
+                    
+                    out.append(f"- {title} | {href}")
+                    if body:
+                        out.append(f"  {body[:180]}")
+                success = True
+                break
         except Exception:
-            out.append("- query failed")
-        out.append("")
+            continue
+            
+    if not success:
+        out.append(f"- query failed: all instances exhausted")
+    out.append("")
+    
 outfile.write_text("\n".join(out) + "\n", encoding="utf-8")
 PY
     else

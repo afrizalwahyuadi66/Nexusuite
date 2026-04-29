@@ -11,7 +11,7 @@ fi
 MISSING_TOOLS=()
 REQUIRED_TOOLS=(
     "gum" "subfinder" "httpx" "nmap" "nuclei" "dalfox" "gau"
-    "katana" "arjun" "sqlmap" "paramspider" "nikto" "jq" "flock" "timeout" "ffuf" "wafw00f"
+    "katana" "arjun" "sqlmap" "paramspider" "nikto" "jq" "flock" "timeout" "ffuf" "wafw00f" "whatweb" "wpscan"
 )
 
 # Wapiti is fully optional, so it is not in REQUIRED_TOOLS
@@ -88,7 +88,7 @@ log_msg() {
     # Print according to OUTPUT_MODE dengan gaya Cyberpunk / Hacker yang lebih bold
     if [[ "${OUTPUT_MODE:-}" == "Verbose"* ]]; then
         # Modern, neat, aligned columns dengan highlight tag
-        printf "\033[1;90m[%s]\033[0m %b\033[1;97m %s \033[0m \033[1;36m%-25.25s\033[0m \033[1;90m| \033[1;35m%-14.14s\033[1;90m | \033[0m%b%s\033[0m\n" \
+        printf "\033[1;90m[%s]\033[0m %b\033[1;97m %s \033[0m \033[1;36m%-25.25s\033[0m \033[1;90m│\033[0m \033[1;35m%-14.14s\033[0m \033[1;90m│\033[0m %b%s\033[0m\n" \
             "$time_now" "$bg_color" "$icon" "$target" "$tool" "$color" "$msg"
     else
         # Minimalist tapi tetap striking
@@ -125,10 +125,20 @@ if command -v curl &> /dev/null && curl -s -m 1 http://localhost:11434/ > /dev/n
     AI_STATUS_TEXT="🤖 AI Agent: AKTIF (Ready)"
 fi
 
+echo -e "\033[1;36m"
+cat << "EOF"
+    _   __                           _ __     
+   / | / /__  _  ____  _______  __  (_) /____ 
+  /  |/ / _ \| |/_/ / / / ___/ / / / / __/ _ \
+ / /|  /  __/>  </ /_/ (__  ) / /_/ / /_/  __/
+/_/ |_/\___/_/|_|\__,_/____/  \__,_/\__/\___/ 
+EOF
+echo -e "\033[0m"
+
 gum style \
-    --border double --align center --width 70 --margin "1" --padding "1 2" \
-    --foreground 46 --border-foreground 46 \
-    "$SCRIPT_NAME v$VERSION" "Professional Web & Network Vulnerability Scanner" "$AI_STATUS_TEXT"
+    --border double --align center --width 75 --margin "0 0 1 0" --padding "0 2" \
+    --foreground 45 --border-foreground 39 \
+    "v$VERSION" "Professional Web & Network Vulnerability Scanner" "$AI_STATUS_TEXT"
 
 # --- Temporary variables for Output Directory ---
 # Output Base di-set awalnya hanya dengan timestamp. Nama domain akan ditambahkan nanti di 02_prompts.sh

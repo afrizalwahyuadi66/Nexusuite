@@ -66,7 +66,7 @@ run_doctor() {
     local -a py_missing=()
     local required_tools=(
         "gum" "subfinder" "httpx" "nmap" "nuclei" "dalfox" "gau"
-        "katana" "arjun" "sqlmap" "paramspider" "nikto" "jq" "flock" "timeout" "ffuf" "wafw00f"
+        "katana" "arjun" "sqlmap" "paramspider" "nikto" "jq" "flock" "timeout" "ffuf" "wafw00f" "whatweb" "wpscan"
     )
 
     if [[ "$output_json" != "true" ]]; then
@@ -95,7 +95,7 @@ run_doctor() {
         local py_check_output=""
         if py_check_output="$(python3 - <<'PY'
 import sys
-mods = ["requests", "duckduckgo_search"]
+mods = ["requests", "bs4"]
 bad = []
 for mod in mods:
     try:
@@ -105,7 +105,7 @@ for mod in mods:
 if bad:
     print("MISSING:", ", ".join(bad))
     sys.exit(1)
-print("OK: requests, duckduckgo_search")
+print("OK: requests, beautifulsoup4")
 PY
         )"; then
             python_ok=true
@@ -321,23 +321,36 @@ fi
 # Konfigurasi timeout AI/Ollama saat startup (menit).
 # Default minimal 5 menit agar tidak mudah timeout pada model/host yang lambat.
 DEFAULT_TIMEOUT_MIN=5
-if [[ -n "${AI_HTTP_TIMEOUT:-}" && "${AI_HTTP_TIMEOUT}" =~ ^[0-9]+$ ]]; then
-    calc_min=$(( (AI_HTTP_TIMEOUT + 59) / 60 ))
-    if [[ "$calc_min" -ge 5 ]]; then
-        DEFAULT_TIMEOUT_MIN="$calc_min"
-    fi
-fi
-echo -e "${YELLOW}[?] Atur timeout request AI/Ollama (menit, minimal 5) [default: ${DEFAULT_TIMEOUT_MIN}]: ${NC}\c"
+echo -e "${YELLOW}[?] Atur timeout request AI/Ollama (menit, minimal 5, isi 0 untuk unlimited) [default: ${DEFAULT_TIMEOUT_MIN}]: ${NC}\c"
 read AI_TIMEOUT_MINUTES
 AI_TIMEOUT_MINUTES="${AI_TIMEOUT_MINUTES:-$DEFAULT_TIMEOUT_MIN}"
 if ! [[ "$AI_TIMEOUT_MINUTES" =~ ^[0-9]+$ ]]; then
     AI_TIMEOUT_MINUTES="$DEFAULT_TIMEOUT_MIN"
 fi
-if [[ "$AI_TIMEOUT_MINUTES" -lt 5 ]]; then
-    AI_TIMEOUT_MINUTES=5
+if [[ "$AI_TIMEOUT_MINUTES" -eq 0 ]]; then
+    export AI_HTTP_TIMEOUT="0"
+    echo -e "${CYAN}[*] Timeout AI/Ollama diatur ke UNLIMITED.${NC}"
+else
+    if [[ "$AI_TIMEOUT_MINUTES" -lt 5 ]]; then
+        AI_TIMEOUT_MINUTES=5
+    fi
+    export AI_HTTP_TIMEOUT="$((AI_TIMEOUT_MINUTES * 60))"
+    echo -e "${CYAN}[*] Timeout AI/Ollama diatur ke ${AI_TIMEOUT_MINUTES} menit (${AI_HTTP_TIMEOUT} detik).${NC}"
 fi
-export AI_HTTP_TIMEOUT="$((AI_TIMEOUT_MINUTES * 60))"
-echo -e "${CYAN}[*] Timeout AI/Ollama diatur ke ${AI_TIMEOUT_MINUTES} menit (${AI_HTTP_TIMEOUT} detik).${NC}"
+
+# Konfigurasi Timeout untuk HTTP Request Tool Eksternal (contoh: curl JS_ANALYST)
+echo -e "${YELLOW}[?] Atur timeout untuk tool network/request eksternal AI seperti curl (detik, isi 0 untuk unlimited) [default: 10]: ${NC}\c"
+read CUSTOM_CURL_TIMEOUT
+CUSTOM_CURL_TIMEOUT="${CUSTOM_CURL_TIMEOUT:-10}"
+if ! [[ "$CUSTOM_CURL_TIMEOUT" =~ ^[0-9]+$ ]]; then
+    CUSTOM_CURL_TIMEOUT=10
+fi
+export AI_CURL_TIMEOUT="$CUSTOM_CURL_TIMEOUT"
+if [[ "$AI_CURL_TIMEOUT" -eq 0 ]]; then
+    echo -e "${CYAN}[*] Timeout tool request AI diatur ke: UNLIMITED (Berjalan sampai server merespon).${NC}"
+else
+    echo -e "${CYAN}[*] Timeout tool request AI diatur ke: ${AI_CURL_TIMEOUT} detik.${NC}"
+fi
 
 # Jika pengguna memilih ya, cek status Ollama
 if [[ "$USE_AI" == "y" || "$USE_AI" == "Y" ]]; then

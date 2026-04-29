@@ -140,6 +140,14 @@ load_recent_campaign_memory() {
 
 CAMPAIGN_MEMORY_SNIPPET="$(load_recent_campaign_memory)"
 
+if [[ -s "$CAMPAIGN_MEMORY_FILE" ]] || [[ -s "$GLOBAL_MEMORY_FILE" ]]; then
+    total_campaign=$(wc -l < "$CAMPAIGN_MEMORY_FILE" 2>/dev/null || echo 0)
+    total_global=$(wc -l < "$GLOBAL_MEMORY_FILE" 2>/dev/null || echo 0)
+    echo -e "\033[1;36m[AI SYSTEM]\033[0m \033[1;32mBerhasil memuat Memori AI Jangka Panjang\033[0m \033[1;90m(Sesi: $total_campaign | Global: $total_global)\033[0m" | tee -a "$OVERLORD_LOG"
+else
+    echo -e "\033[1;33m[AI SYSTEM]\033[0m \033[1;37mMemori AI kosong. Ini adalah pengalaman pertama AI untuk target ini.\033[0m" | tee -a "$OVERLORD_LOG"
+fi
+
 # Loop Overlord
 while [[ $ITERATION -le $MAX_ITERATIONS ]]; do
     echo -e "\n\033[44m\033[1;97m 🔄 ITERASI $ITERATION / $MAX_ITERATIONS \033[0m" | tee -a "$OVERLORD_LOG"
@@ -196,7 +204,10 @@ EOF
     CMD=$(echo "$JSON_RESP" | jq -r '.command // ""')
     IS_FINISHED=$(echo "$JSON_RESP" | jq -r '.is_finished // false')
 
-    echo -e "\033[1;35m[AI THOUGHT]\033[0m \033[1;37m$THOUGHT\033[0m" | tee -a "$OVERLORD_LOG"
+    # UI Upgrade: Tampilan Thought yang lebih cyberpunk
+    echo -e "\033[1;35m╔══ [AI THOUGHT]\033[0m" | tee -a "$OVERLORD_LOG"
+    echo -e "\033[1;35m║\033[0m \033[3;37m$THOUGHT\033[0m" | tee -a "$OVERLORD_LOG"
+    echo -e "\033[1;35m╚═══════════════════════════════════════════════════════════\033[0m" | tee -a "$OVERLORD_LOG"
     
     if [[ "$IS_FINISHED" == "true" || -z "$CMD" || "$CMD" == "null" ]]; then
         echo -e "\033[42m\033[1;97m ✅ AI memutuskan untuk mengakhiri serangannya. \033[0m" | tee -a "$OVERLORD_LOG"
@@ -205,7 +216,8 @@ EOF
 
     # Keamanan: Tolak command yang merusak mesin lokal
     if [[ "$CMD" =~ (rm[[:space:]]+-rf|mkfs|dd[[:space:]]+if|:\|:|>\s*/dev/sda) ]]; then
-         echo -e "\033[41m\033[1;97m ❌ [BLOCKED] Command ditolak karena berpotensi merusak mesin lokal: $CMD \033[0m" | tee -a "$OVERLORD_LOG"
+         echo -e "\033[41m\033[1;97m ❌ [BLOCKED] Command ditolak karena berpotensi merusak mesin lokal: \033[0m" | tee -a "$OVERLORD_LOG"
+         echo -e "\033[1;31m   > $CMD \033[0m" | tee -a "$OVERLORD_LOG"
          CMD_OUTPUT="ERROR: Command ditolak oleh sistem keamanan."
     else
          echo -e "\033[46m\033[1;97m 🚀 [EXEC] Menjalankan: \033[0m \033[1;36m$CMD\033[0m" | tee -a "$OVERLORD_LOG"
@@ -213,9 +225,10 @@ EOF
          CMD_OUTPUT=$(timeout 60 bash -c "$CMD" 2>&1 | head -c 5000 || echo "[Timeout atau Output terlalu panjang]")
     fi
 
-    echo -e "\033[1;90m--- OUTPUT ---\033[0m" | tee -a "$OVERLORD_LOG"
+    echo -e "\033[1;90m┌── OUTPUT ─────────────────────────────────────────────────\033[0m" | tee -a "$OVERLORD_LOG"
+    # Menambahkan warna abu-abu untuk output terminal agar tidak menyakiti mata
     echo -e "\033[38;5;245m$CMD_OUTPUT\033[0m" | tee -a "$OVERLORD_LOG"
-    echo -e "\033[1;90m------------------------------------------------------------\033[0m" | tee -a "$OVERLORD_LOG"
+    echo -e "\033[1;90m└───────────────────────────────────────────────────────────\033[0m" | tee -a "$OVERLORD_LOG"
 
     # Simpan output untuk konteks iterasi selanjutnya (dibatasi agar tidak kepanjangan)
     PREVIOUS_OUTPUTS="--- PERINTAH SEBELUMNYA: $CMD ---\n$CMD_OUTPUT\n"
