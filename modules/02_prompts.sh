@@ -472,7 +472,7 @@ PY
             "Standard (80, 443)" \
             "Large (80, 443, 8080, 8443, 3000, 8000)")
             
-        local httpx_ports="-p 80,443"
+        httpx_ports="-p 80,443"
         if [[ "$PORT_MODE" == "Large"* ]]; then
             httpx_ports="-p 80,443,8080,8443,3000,8000"
         fi
