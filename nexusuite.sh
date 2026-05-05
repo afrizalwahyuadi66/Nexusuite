@@ -6,10 +6,23 @@
 
 set -euo pipefail
 
-# Get script directory to source modules relatively
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# CLI flags
+# V4 Engine auto-start helper
+ensure_v4_engine_running() {
+  local health_url="http://localhost:8000/health"
+  local engine_log_dir="${SCRIPT_DIR}/nx_platform/v4/logs"
+  local engine_log="${engine_log_dir}/engine_v4.log"
+  local engine_pid_file="${engine_log_dir}/engine_v4.pid"
+  # If engine health is up, good. If not, rely on the API server startup to start the engine.
+  if curl -sSf "${health_url}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "[INFO] V4 Engine tidak hidup. API server akan memulai engine saat dijalankan."
+  return 0
+}
+
 DOCTOR_MODE=false
 DOCTOR_JSON=false
 DRY_RUN=false
@@ -50,11 +63,52 @@ json_array() {
     printf "]"
 }
 
+ollama_check() {
+    curl -s --max-time 5 "${OLLAMA_HOST:-http://localhost:11434}/api/tags" > /dev/null 2>&1
+}
+
+select_ollama_model() {
+    local YELLOW='\033[1;33m'
+    local CYAN='\033[1;36m'
+    local GREEN='\033[0;32m'
+    local NC='\033[0m'
+
+    echo -e "${YELLOW}[?] Memuat daftar model Ollama yang tersedia...${NC}"
+    if command -v curl &>/dev/null; then
+        local available_models
+        available_models=$(curl -s "${OLLAMA_HOST:-http://localhost:11434}/api/tags" | jq -r '.models[].name' 2>/dev/null)
+        if [[ -n "$available_models" ]]; then
+            echo -e "${CYAN}Model AI yang tersedia di Ollama lokal Anda:${NC}"
+            local model_array=()
+            local idx=1
+            while IFS= read -r model_name; do
+                echo -e "    $idx) $model_name"
+                model_array+=("$model_name")
+                ((idx++))
+            done <<< "$available_models"
+            
+            echo -e "${YELLOW}Pilih model AI (masukkan angka, default: 1): ${NC}\c"
+            local MODEL_CHOICE
+            read MODEL_CHOICE
+            MODEL_CHOICE="${MODEL_CHOICE:-1}"
+            
+            if [[ "$MODEL_CHOICE" =~ ^[0-9]+$ ]] && [[ "$MODEL_CHOICE" -gt 0 ]] && [[ "$MODEL_CHOICE" -le "${#model_array[@]}" ]]; then
+                local selected_model="${model_array[$((MODEL_CHOICE-1))]}"
+                export OLLAMA_MODEL="$selected_model"
+                echo -e "${GREEN}[+] Model AI diatur ke: $selected_model${NC}"
+            else
+                echo -e "${YELLOW}[!] Pilihan tidak valid. Menggunakan model default: ${OLLAMA_MODEL:-deepseek-r1:8b}${NC}"
+            fi
+        else
+            echo -e "${YELLOW}[!] Gagal mengambil daftar model dari Ollama. Menggunakan model default: ${OLLAMA_MODEL:-deepseek-r1:8b}${NC}"
+        fi
+    fi
+}
+
 run_doctor() {
     local output_json="${1:-false}"
-    local cfg="$SCRIPT_DIR/ai_rag_tool/ai_config.sh"
+    local cfg="$SCRIPT_DIR/ai_rag_tool/ai_config. sh"
     if [[ -f "$cfg" ]]; then
-        # shellcheck disable=SC1090
         source "$cfg"
     fi
 
@@ -193,7 +247,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "Argumen tidak dikenal: $1"
+            echo "Argumen tidak diakui: $1"
             show_help
             exit 1
             ;;
@@ -211,7 +265,10 @@ if [[ "$PLATFORM_API" == "true" ]]; then
         echo "python3 tidak ditemukan. Platform API membutuhkan python3."
         exit 1
     fi
-    exec python3 "$SCRIPT_DIR/platform/api_server.py"
+    # Ensure V4 Engine is running before starting API server
+    ensure_v4_engine_running
+    # If engine failed to start, still attempt to start API to allow debugging
+    exec python3 "$SCRIPT_DIR/nx_platform/v4/main.py"
 fi
 
 if [[ "$PLATFORM_WORKER" == "true" ]]; then
@@ -219,109 +276,94 @@ if [[ "$PLATFORM_WORKER" == "true" ]]; then
         echo "python3 tidak ditemukan. Platform Worker membutuhkan python3."
         exit 1
     fi
-    exec python3 "$SCRIPT_DIR/platform/worker.py"
+    exec python3 "$SCRIPT_DIR/nx_platform/v4/engine/worker.py"
 fi
 
 export DRY_RUN
 
 if [[ "${OSTYPE:-}" == "msys"* || "${OSTYPE:-}" == "cygwin"* || "${OSTYPE:-}" == "win32"* ]]; then
     echo "[WARN] Terdeteksi shell Windows native. Untuk stabilitas penuh, jalankan via WSL2."
-    echo "[INFO] Gunakan: powershell -ExecutionPolicy Bypass -File .\\run_windows.ps1"
+    echo "[INFO] Gunakan: powershell -ExecutionPolicy Bypass -File .\run_windows.ps1"
 fi
 
-# Source modules in order
 source "$SCRIPT_DIR/modules/00_error_handler.sh"
 source "$SCRIPT_DIR/modules/01_init.sh"
 if [[ -f "$SCRIPT_DIR/ai_rag_tool/ai_config.sh" ]]; then
-    # shellcheck disable=SC1091
     source "$SCRIPT_DIR/ai_rag_tool/ai_config.sh"
 fi
 
-# Define ANSI Colors
 YELLOW='\033[1;33m'
 CYAN='\033[1;36m'
 GREEN='\033[0;32m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Tanyakan mode AI saat awal startup.
-# - Manual: AI hanya untuk analisis/audit (opsional)
-# - Full Control: AI orchestrator aktif + dorking aktif selama scan berjalan
 if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-false}" == "1" ]]; then
     export USE_AI="y"
+    export USE_V4_ENGINE="true"
     echo -e "${CYAN}[*] AI Orchestrator mode aktif dari environment: AI Full Control diaktifkan otomatis.${NC}"
 else
-    echo -e "${YELLOW}[?] Pilih mode operasi AI saat startup:${NC}"
-    echo -e "    1) Manual (default) - tools berjalan normal, AI opsional untuk analisis"
-    echo -e "    2) AI Full Control - AI mengorkestrasi discovery + dorking selama scan"
-    echo -e "${YELLOW}Masukkan pilihan [1/2] (default: 1): ${NC}\c"
+    echo -e "${YELLOW}[?] Select Operational Control Mode:${NC}"
+    echo -e "    1) Manual Mode (You lead, AI consults)"
+    echo -e "    2) Autonomous Mode (AI leads total mission)"
+    echo -e "    3) Advanced AI Agent Configuration (Brain Settings)"
+    echo -e "${YELLOW}Masukkan pilihan [1/2/3] (default: 1): ${NC}\c"
     read AI_BOOT_MODE
     AI_BOOT_MODE="${AI_BOOT_MODE:-1}"
 
     if [[ "$AI_BOOT_MODE" == "2" ]]; then
         export AI_ORCHESTRATOR_MODE="true"
         export USE_AI="y"
-        export AI_ENABLE_DORKING="${AI_ENABLE_DORKING:-true}"
-        echo -e "${CYAN}[*] AI Full Control aktif: orchestrator + dorking akan dijalankan.${NC}"
+        export USE_V4_ENGINE="false" # Opsi 2 menggunakan Engine Klasik (ai_rag_tool)
+        export AI_AGENT_MODE="standard"
+        echo -e "${CYAN}[*] Autonomous Mission aktif: Menggunakan Engine Klasik (ai_rag_tool).${NC}"
+        select_ollama_model
+    
+    elif [[ "$AI_BOOT_MODE" == "3" ]]; then
+        echo ""
+        echo -e "${CYAN}╔═══════════════════════════════════════════════════════════╗"
+        echo -e "║          NEXUSUITE V4 - ADVANCED AI ENGINE                ║"
+        echo -e "╚═══════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo -e "${YELLOW}Pilih Strategi Brain V4 yang ingin digunakan:${NC}"
+        echo -e "    1) NX-ADVANCED (Iterative reasoning, aggressive tool dispatch) ${GREEN}(Recommended)${NC}"
+        echo -e "    2) TRUE AI (Deep observation of every output line)"
+        echo -e "    3) HYBRID (AI decides targets, Shell executes tools)"
+        echo -e "    4) RAG-BASED (Match findings with Exploit-DB knowledge)"
+        echo -e "    5) EXIT (Kembali)"
+        echo ""
+        echo -e "${YELLOW}Masukkan pilihan [1/2/3/4/5] (default: 1): ${NC}\c"
+        read AGENT_CHOICE
+        AGENT_CHOICE="${AGENT_CHOICE:-1}"
+        [[ "$AGENT_CHOICE" == "5" ]] && exec "$0"
+
+        export USE_AI="y"
+        export USE_V4_ENGINE="true" # Opsi 3 mengaktifkan Engine V4 (nx_platform)
+        export AI_ORCHESTRATOR_MODE="true" # V4 selalu autonomous di mode ini
         
-        # Opsi memory shared lintas model (hybrid memory pool)
-        # Ini hanya ditawarkan saat mode Full AI dipilih.
-        if [[ "${AI_MEMORY_SHARED:-false}" == "true" || "${AI_MEMORY_SHARED:-false}" == "1" ]]; then
-            DEFAULT_SHARED_CHOICE="y"
-        else
-            DEFAULT_SHARED_CHOICE="n"
-        fi
-        echo -e "${YELLOW}[?] Aktifkan Memory Shared lintas model AI? (y/n) [${DEFAULT_SHARED_CHOICE}]: ${NC}\c"
-        read MEMORY_SHARED_CHOICE
-        MEMORY_SHARED_CHOICE="${MEMORY_SHARED_CHOICE:-$DEFAULT_SHARED_CHOICE}"
-        if [[ "$MEMORY_SHARED_CHOICE" =~ ^[Yy]$ ]]; then
-            export AI_MEMORY_SHARED="true"
-            echo -e "${CYAN}[*] Memory Shared: AKTIF (session + per-model + shared).${NC}"
-        else
-            export AI_MEMORY_SHARED="false"
-            echo -e "${YELLOW}[*] Memory Shared: NONAKTIF (session + per-model saja).${NC}"
-        fi
+        case "$AGENT_CHOICE" in
+            1) export AI_AGENT_MODE="nx_advanced" ;;
+            2) export AI_AGENT_MODE="true_ai" ;;
+            3) export AI_AGENT_MODE="hybrid" ;;
+            4) export AI_AGENT_MODE="rag_based" ;;
+        esac
         
-        # Opsi pemilihan model AI secara otomatis dari Ollama
-        echo -e "${YELLOW}[?] Memuat daftar model Ollama yang tersedia...${NC}"
-        if command -v curl &>/dev/null; then
-            available_models=$(curl -s http://localhost:11434/api/tags | jq -r '.models[].name' 2>/dev/null)
-            if [[ -n "$available_models" ]]; then
-                echo -e "${CYAN}Model AI yang tersedia di Ollama lokal Anda:${NC}"
-                model_array=()
-                idx=1
-                while IFS= read -r model_name; do
-                    echo -e "    $idx) $model_name"
-                    model_array+=("$model_name")
-                    ((idx++))
-                done <<< "$available_models"
-                
-                echo -e "${YELLOW}Pilih model AI (masukkan angka, default: 1): ${NC}\c"
-                read MODEL_CHOICE
-                MODEL_CHOICE="${MODEL_CHOICE:-1}"
-                
-                # Validasi pilihan
-                if [[ "$MODEL_CHOICE" =~ ^[0-9]+$ ]] && [[ "$MODEL_CHOICE" -gt 0 ]] && [[ "$MODEL_CHOICE" -le "${#model_array[@]}" ]]; then
-                    selected_model="${model_array[$((MODEL_CHOICE-1))]}"
-                    export OLLAMA_MODEL="$selected_model"
-                    echo -e "${GREEN}[+] Model AI diatur ke: $selected_model${NC}"
-                else
-                    echo -e "${YELLOW}[!] Pilihan tidak valid. Menggunakan model default: ${OLLAMA_MODEL:-deepseek-r1:8b}${NC}"
-                fi
-            else
-                echo -e "${YELLOW}[!] Gagal mengambil daftar model dari Ollama. Menggunakan model default: ${OLLAMA_MODEL:-deepseek-r1:8b}${NC}"
-            fi
-        fi
+        select_ollama_model
+        echo -e "${GREEN}[+] Nexusuite V4 Engine diaktifkan dengan strategi: $AI_AGENT_MODE${NC}"
     else
+        export AI_ORCHESTRATOR_MODE="false"
+        export USE_V4_ENGINE="false"
+        export AI_AGENT_MODE="tools_only"
         echo -e "${YELLOW}[?] Aktifkan AI Pentester (Ollama Lokal) untuk analisis hasil scan? (y/n) [n]: ${NC}\c"
         read USE_AI
         export USE_AI=${USE_AI:-n}
+        if [[ "$USE_AI" =~ ^[Yy]$ ]]; then
+            select_ollama_model
+        fi
     fi
 fi
 
-# Konfigurasi timeout AI/Ollama saat startup (menit).
-# Default minimal 5 menit agar tidak mudah timeout pada model/host yang lambat.
 DEFAULT_TIMEOUT_MIN=5
-echo -e "${YELLOW}[?] Atur timeout request AI/Ollama (menit, minimal 5, isi 0 untuk unlimited) [default: ${DEFAULT_TIMEOUT_MIN}]: ${NC}\c"
+echo -e "${YELLOW}[?] Atur timeout request AI/ Ollama (menit, minimal 5, isi 0 untuk unlimited) [default: ${DEFAULT_TIMEOUT_MIN}]: ${NC}\c"
 read AI_TIMEOUT_MINUTES
 AI_TIMEOUT_MINUTES="${AI_TIMEOUT_MINUTES:-$DEFAULT_TIMEOUT_MIN}"
 if ! [[ "$AI_TIMEOUT_MINUTES" =~ ^[0-9]+$ ]]; then
@@ -329,17 +371,16 @@ if ! [[ "$AI_TIMEOUT_MINUTES" =~ ^[0-9]+$ ]]; then
 fi
 if [[ "$AI_TIMEOUT_MINUTES" -eq 0 ]]; then
     export AI_HTTP_TIMEOUT="0"
-    echo -e "${CYAN}[*] Timeout AI/Ollama diatur ke UNLIMITED.${NC}"
+    echo -e "${CYAN}[*] Timeout AI/ Ollama diatur ke UNLIMITED.${NC}"
 else
     if [[ "$AI_TIMEOUT_MINUTES" -lt 5 ]]; then
         AI_TIMEOUT_MINUTES=5
     fi
     export AI_HTTP_TIMEOUT="$((AI_TIMEOUT_MINUTES * 60))"
-    echo -e "${CYAN}[*] Timeout AI/Ollama diatur ke ${AI_TIMEOUT_MINUTES} menit (${AI_HTTP_TIMEOUT} detik).${NC}"
+    echo -e "${CYAN}[*] Timeout AI/ Ollama diatur ke ${AI_TIMEOUT_MINUTES} menit (${AI_HTTP_TIMEOUT} detik).${NC}"
 fi
 
-# Konfigurasi Timeout untuk HTTP Request Tool Eksternal (contoh: curl JS_ANALYST)
-echo -e "${YELLOW}[?] Atur timeout untuk tool network/request eksternal AI seperti curl (detik, isi 0 untuk unlimited) [default: 10]: ${NC}\c"
+echo -e "${YELLOW}[?] Atur timeout untuk tool network/ request eksternal AI seperti curl (detik, isi 0 untuk unlimited) [default: 10]: ${NC}\c"
 read CUSTOM_CURL_TIMEOUT
 CUSTOM_CURL_TIMEOUT="${CUSTOM_CURL_TIMEOUT:-10}"
 if ! [[ "$CUSTOM_CURL_TIMEOUT" =~ ^[0-9]+$ ]]; then
@@ -352,14 +393,13 @@ else
     echo -e "${CYAN}[*] Timeout tool request AI diatur ke: ${AI_CURL_TIMEOUT} detik.${NC}"
 fi
 
-# Jika pengguna memilih ya, cek status Ollama
 if [[ "$USE_AI" == "y" || "$USE_AI" == "Y" ]]; then
     if command -v curl &>/dev/null; then
         echo -e "${CYAN}[*] Mengecek status AI (Ollama)...${NC}"
         if ollama_check; then
             echo -e "\033[1;32m[+] Status AI (Ollama): AKTIF (${OLLAMA_HOST:-http://localhost:11434})\033[0m"
         else
-            echo -e "\033[1;31m[-] Status AI (Ollama): NON-AKTIF (${OLLAMA_HOST:-http://localhost:11434}). AI Agent akan dilewati.\033[0m"
+            echo -e "\033[1;31m[-] Status AI (Ollama): NONAKTIF (${OLLAMA_HOST:-http://localhost:11434}). AI Agent akan dilewati.\033[0m"
         fi
     fi
 fi

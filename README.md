@@ -1,277 +1,249 @@
-<h1 align="center">Nexusuite v3.5.0 (Autonomous AI Pentester Edition)</h1>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/your-username/nexusuite/main/static/img/logo.png" alt="Nexusuite Logo" width="200">
+</p>
+
+<h1 align="center">Nexusuite v4.1.0</h1>
 
 <p align="center">
-  <b>Professional Web & Network Vulnerability Scanner with Autonomous AI Assistance</b><br>
-  <i>Designed for Linux, Termux, and Windows (via WSL2).</i>
+  <b>Advanced AI-First Autonomous Offensive Security Platform</b><br>
+  <i>Empowering security teams with automated precision, deep AI reasoning, and a high-performance scanning engine.</i>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Bash-4EAA25?style=for-the-badge&logo=gnu-bash&logoColor=white" alt="Bash">
-  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/AI-Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white" alt="Ollama">
-  <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License">
+  <a href="https://github.com/your-username/nexusuite/releases"><img src="https://img.shields.io/github/v/release/your-username/nexusuite?style=for-the-badge&color=blue" alt="Release"></a>
+  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python Version"></a>
+  <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"></a>
+  <a href="https://ollama.com"><img src="https://img.shields.io/badge/AI-Ollama%20+%20RAG-000000?style=for-the-badge&logo=ollama&logoColor=white" alt="Ollama AI"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License"></a>
 </p>
 
 ---
 
-## 🌟 What's New in v3.5.0 (AI Edition)
-Nexusuite has evolved into a fully autonomous, AI-driven penetration testing framework. The AI doesn't just read outputs anymore; it actively plans, dorks, replans, and exploits.
+## 📖 Deskripsi Proyek
 
-- **🤖 AI Orchestrator (Full Control Mode):** The AI decision engine acts as the primary planner. It determines the optimal tool execution order, skips unnecessary tools, sets retry policies, and customizes arguments (`nmap`/`sqlmap`) per target.
-- **🔍 Active AI Dorking & Discovery:** While tools run, the AI Orchestrator performs passive dorking (DuckDuckGo) in the background to find sensitive parameters, IDOR candidates, and exposed admin panels.
-- **🧠 Multi-Phase AI Planning:** 
-  1. **Pre-plan:** Initial tool selection and rate limiting.
-  2. **Re-plan (Post-Recon):** AI adjusts its strategy (Web vs. Network focus) based on live recon data (alive hosts, URLs with params).
-  3. **AI Attack Graph (Post-Vuln):** The AI builds a prioritized attack path based on confirmed vulnerabilities (`nuclei`, `sqlmap`, `xss`).
-- **🧬 AI Campaign Memory:** The AI learns across targets. It remembers which CVEs/techniques worked or failed and applies this historical context to future targets.
-- **🔥 Aggressive Mode:** Optional setting to increase verification depth, controlled exploitation actions, and dorking queries for deep testing.
-- **📊 Enhanced HTML Dashboard:** Beautiful, interactive reporting including AI Decision Timelines, AI Attack Graphs, Dorking Intelligence, and Proxy Routing Audits.
+**Nexusuite v4.1.0** adalah platform *offensive security* otonom generasi terbaru yang dirancang untuk mengotomatisasi seluruh siklus hidup pengujian penetrasi (pentesting). Berbeda dengan scanner tradisional, Nexusuite mengintegrasikan **Kecerdasan Buatan (AI)** di setiap fasenya—mulai dari perencanaan strategi serangan hingga verifikasi kerentanan yang kompleks.
+
+Dibangun dengan arsitektur **asinkron berbasis FastAPI**, Nexusuite menawarkan kecepatan eksekusi yang luar biasa, manajemen pekerjaan yang persisten dengan SQLite, dan antarmuka dashboard modern untuk pemantauan real-time.
 
 ---
 
-## 📋 Overview
-Nexusuite is a terminal-based security automation framework that combines industry-standard tools (`nmap`, `nuclei`, `ffuf`, `sqlmap`, `nikto`, and more) into a single guided workflow.
+## ✨ Fitur Utama
 
-It includes powerful local AI support (Ollama + RAG) to:
-- Act as an Autonomous Pentester (planning, verification, and controlled exploitation).
-- Parse scan output and detect likely CVEs.
-- Correlate with local exploit intelligence (`searchsploit` dataset).
-- Provide practical next-step command suggestions for analysts.
-
-## ✨ Key Features
-- Interactive TUI powered by `gum` for a clean CLI experience.
-- Recon and enumeration pipeline (`subfinder`, `httpx`, `gau`, `katana`, `paramspider`, `arjun`, `ffuf`).
-- Vulnerability scanning orchestration (`nuclei`, `sqlmap`, `dalfox`, `wapiti`, `nikto`).
-- **Proxy-aware execution** with per-tool proxy injection, routing policy controls, and safe local-bypass for AI/Ollama.
-- Per-target proxy forensic audit (`attempt`, `exit_code`, `duration`, `cmd_hash`).
-- Consolidated text report and comprehensive **HTML dashboard** generation.
+- **🤖 Autonomous AI Agent (The Brain):** Menggunakan LLM (Ollama) dan RAG untuk melakukan observasi target, klasifikasi URL cerdas, dan pengambilan keputusan otonom.
+- **⚡ High-Performance Async Engine:** Eksekusi tool keamanan secara paralel dan non-blocking untuk efisiensi maksimal.
+- **🔍 8-Phase Scanning Lifecycle:** Alur kerja komprehensif dari Reconnaissance, Intelligence Gathering, AI Observation, hingga Exploitation dan Reporting.
+- **🛠 Self-Healing Bootstrap:** Sistem cerdas yang secara otomatis mendeteksi, menginstal, dan memperbaiki dependensi sistem serta tool keamanan yang hilang.
+- **📊 Real-time Web Dashboard:** Antarmuka visual yang menyajikan timeline aktivitas AI, grafik serangan (Attack Graph), dan laporan teknis mendalam.
+- **🔐 Enterprise-Grade Security:** Sistem autentikasi berbasis API Key (RBAC) dan manajemen risiko (Risk Policy) untuk mengontrol ruang lingkup pemindaian.
+- **🔌 Dynamic Tool Registry:** Katalog perintah tool yang dapat diperluas melalui file konfigurasi YAML, memungkinkan integrasi tool baru dengan mudah.
 
 ---
 
-## 🏗️ Workflow Architecture
+## 🚀 Evolusi Mesin: v3 vs v4
+
+Engine v4 bukan sekadar pembaruan kecil, melainkan perombakan total dari fundamental sistem untuk mendukung operasi otonom skala besar.
+
+| Fitur | Nexusuite v3 (Legacy) | Nexusuite v4 (Next-Gen) |
+| :--- | :--- | :--- |
+| **Arsitektur Utama** | Shell-script driven (Sequential) | Python Async API-driven (FastAPI) |
+| **Peran AI** | Analisis hasil scan setelah selesai | Perencanaan strategi otonom & observasi real-time |
+| **Eksekusi Tool** | Satu per satu (Blocking) | Paralel & Background Tasks (Non-blocking) |
+| **Integrasi AI** | Prompt dasar ke Ollama | Terintegrasi RAG dengan basis pengetahuan lokal |
+| **Manajemen Data** | File teks & JSON terpisah | Database terpusat SQLite dengan migrasi otomatis |
+| **Antarmuka** | TUI (Terminal User Interface) | Dashboard Web Modern + CLI Cerdas |
+| **Analisis Web** | Crawling standar | AI-based Form Analysis (CSRF/IDOR detection) |
+| **Reliabilitas** | Manual install dependensi | Self-healing Bootstrap (Auto-install tools) |
+
+---
+
+## 🧠 Mekanisme AI & LLM Orchestration (Deep Dive)
+
+Nexusuite v4 mengimplementasikan arsitektur **Cognitive Offensive AI** yang membagi kecerdasan buatan ke dalam dua lapisan utama: **Global Strategist (Orchestrator)** dan **Tactical Agent (AI Brain)**.
+
+### **1. AI Architecture Framework**
+Sistem ini menggunakan siklus kognitif asinkron yang terintegrasi dengan **Ollama** sebagai LLM backend dan **RAG (Retrieval-Augmented Generation)** untuk injeksi pengetahuan exploit lokal.
+
 ```mermaid
 graph TD
-    A[Run ./nexusuite.sh] --> B[Startup: Manual or AI Full Control]
-    B --> C[AI Pre-Plan: Tool Selection & Policy]
-    C --> D{Phase 1: Recon & Dorking}
-    D --> E[AI Re-Plan: Adjust Strategy]
-    E --> F{Phase 2: Vulnerability Scanning}
-    F --> G[Build AI Attack Graph]
-    G --> H{Phase 3: Autonomous AI Pentester}
-    H --> I[AI Verification & Controlled Exploitation]
-    I --> J[Update AI Campaign Memory]
-    J --> K[Generate Text + HTML Dashboard Reports]
+    A[Target Input] --> B[AI Orchestrator]
+    
+    subgraph "Knowledge Layer"
+        B -->|Query| C[RAG Assistant]
+        C -->|Context| D[(Exploit DB)]
+        D -->|Relevant CVEs| C
+    end
+    
+    subgraph "Reasoning Layer"
+        C -->|Prompt + Context| E[Ollama LLM]
+        E -->|Structured JSON| F{Decision Engine}
+    end
+    
+    subgraph "Execution Layer"
+        F -->|Strategy: Recon| G[Worker Engine]
+        F -->|Tactical: Observation| H[AI Agent Brain]
+        H -->|Observe| I[Target URL/Params]
+        I -->|Think| J[Vulnerability Analysis]
+        J -->|Plan| K[Payload Selection]
+        K -->|Act| L[Feedback Loop]
+    end
+    
+    L -->|Learning| H
+```
+
+### **2. Cara Kerja AI Agent (The Brain)**
+Agen taktis beroperasi menggunakan metodologi **Chain-of-Thought (CoT)** untuk memproses data mentah menjadi langkah eksploitasi yang divalidasi:
+
+*   **OBSERVE**: Menganalisis ribuan URL hasil crawling menggunakan regex dan LLM untuk mengidentifikasi "Interesting Paths" (e.g., `/admin`, `/api/v1/user/delete`).
+*   **THINK**: Melakukan penalaran deduktif terhadap tumpukan teknologi (Tech Stack) yang terdeteksi. AI mempertimbangkan: *"Jika server menggunakan PHP 7.4 dan terdapat parameter 'file', apakah LFI lebih mungkin daripada SQLi?"*
+*   **ACT (Feedback Loop)**: AI mencoba payload dari `SmartPayloadGenerator` dan menganalisis respons HTTP. Jika gagal (e.g., WAF blocking), AI akan "belajar" dan menyesuaikan strategi (misal: beralih ke teknik *encoding bypass*).
+
+### **3. RAG (Retrieval-Augmented Generation)**
+Tidak seperti LLM standar yang hanya mengandalkan *pre-trained data*, Nexusuite v4 menyuntikkan data spesifik dari `exploit_db.json` ke dalam prompt secara dinamis:
+1.  **Similarity Search**: Mencari kerentanan serupa berdasarkan fingerprint target.
+2.  **Context Injection**: Menambahkan instruksi spesifik tentang cara mengeksploitasi CVE tertentu langsung ke dalam instruksi LLM.
+3.  **Precision Prompting**: Menggunakan *low temperature* (0.3) untuk memastikan output JSON yang konsisten dan dapat diproses oleh mesin.
+
+---
+
+## 🏗️ Arsitektur & Cara Kerja
+
+Nexusuite beroperasi sebagai ekosistem otonom yang membagi beban kerja ke dalam beberapa modul utama:
+
+### **Alur Data (Workflow)**
+```mermaid
+graph TD
+    User((User/Admin)) -->|API Request| API[FastAPI Server]
+    API -->|Create Job| DB[(SQLite Database)]
+    API -->|Trigger| Worker[Autonomous Worker]
+    
+    subgraph "Engine Otonom"
+        Worker -->|Strategy| Orchestrator[AI Orchestrator]
+        Orchestrator -->|Context| RAG[RAG Assistant]
+        Orchestrator -->|Reasoning| Ollama[LLM]
+        
+        Worker -->|Execution| Tools[Security Tools Registry]
+        Tools -->|Raw Data| Worker
+        
+        Worker -->|Deep Analysis| AIAgent[AI Agent]
+        AIAgent -->|Findings| Worker
+    end
+    
+    Worker -->|Update Status| DB
+    Worker -->|Generate| Report[Reporting Engine]
+    Report -->|Final Report| User
+```
+
+### **8-Phase Lifecycle**
+1.  **Reconnaissance (Passive/Active)**: Memetakan permukaan serangan dan host yang aktif.
+2.  **Infrastructure Mapping**: Fingerprinting WAF, teknologi web, dan pemindaian port.
+3.  **Intelligence Gathering**: Crawling mendalam dan ekstraksi parameter menggunakan AI.
+4.  **AI Observation**: Analisis cerdas terhadap target untuk menentukan prioritas serangan.
+5.  **Vulnerability Research**: Pemindaian kerentanan otomatis menggunakan scanner standar industri.
+6.  **Advanced AI Testing**: Deteksi kerentanan logika (CSRF/IDOR) melalui analisis form cerdas.
+7.  **Exploitation**: Upaya eksploitasi terfokus pada target yang telah divalidasi.
+8.  **Final Reporting**: Konsolidasi seluruh temuan ke dalam laporan teknis dan eksekutif.
+
+---
+
+## 🚀 Panduan Instalasi
+
+### **Prasyarat Sistem**
+- **OS:** Ubuntu 22.04+ (Direkomendasikan), WSL2, atau Kali Linux.
+- **Python:** v3.10 atau lebih tinggi.
+- **Go:** v1.21+ (untuk tool ProjectDiscovery).
+- **AI:** [Ollama](https://ollama.com/) terinstal untuk fitur otonom AI.
+
+### **Langkah Instalasi**
+
+1. **Clone Repositori:**
+   ```bash
+   git clone https://github.com/your-username/nexusuite.git
+   cd nexusuite
+   ```
+
+2. **Instalasi Tool Sistem:**
+   Jalankan script installer untuk mengotomatisasi instalasi tool seperti Nuclei, Sqlmap, dll.
+   ```bash
+   chmod +x install.sh
+   ./install.sh
+   ```
+
+3. **Bootstrap Dependensi Python:**
+   Sistem akan secara otomatis menyiapkan virtual environment dan dependensi yang diperlukan.
+   ```bash
+   python nx_platform/v4/core/bootstrap.py
+   ```
+
+4. **Konfigurasi Environment:**
+   Salin file contoh `.env` dan sesuaikan kunci API serta pengaturan AI Anda.
+   ```bash
+   cp .env.example .env
+   # Edit .env dengan editor favorit Anda
+   ```
+
+---
+
+## 💡 Cara Penggunaan
+
+### **Mode Platform (Dashboard)**
+Rekomendasi penggunaan untuk pemantauan visual dan manajemen banyak pekerjaan sekaligus.
+
+```bash
+# Jalankan server utama
+python nx_platform/v4/main.py
+```
+Akses UI di: **`http://localhost:8000`**
+
+### **Mode CLI (Otonom)**
+Gunakan untuk pemindaian cepat langsung dari terminal.
+
+```bash
+python nx_platform/v4/core/cli.py --target https://example.com --ai-mode hybrid
 ```
 
 ---
 
-## Requirements
-Minimum required tooling includes:
-- `gum`
-- `subfinder`
-- `httpx`
-- `nmap`
-- `nuclei`
-- `dalfox`
-- `gau`
-- `katana`
-- `arjun`
-- `sqlmap`
-- `paramspider`
-- `nikto`
-- `ffuf`
-- `wafw00f`
-- `jq`
-- `python3`
+## 📂 Struktur Direktori
 
-## 🤖 AI Setup (Optional, Recommended)
-```bash
-# Install Ollama (Linux/macOS)
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Pull a default local model
-ollama pull deepseek-r1:8b
-
-# Install Python dependencies
-pip install -r ai_rag_tool/requirements.txt
-```
-
-For Windows, install Ollama from [ollama.com/download](https://ollama.com/download).
-
-Configure AI settings via `.env` (or export directly):
-```bash
-cp .env.example .env
-
-# Base AI Config
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=deepseek-r1:8b
-
-# Advanced Autonomous Pentester Configs
-AI_AGGRESSIVE_MODE=true
-AI_AGGRESSIVE_LEVEL=2
-AI_DORK_MAX_RESULTS=12
-AI_PROXY_FOR_INTEL=false
-AI_EXECUTE_VERIFICATION=true
-AI_EXECUTE_CONTROLLED_ACTIONS=true
-```
-
-Optional exploit dataset update:
-```bash
-python3 ai_rag_tool/update_dataset.py
-```
-
----
-
-## Windows Support (WSL2 Recommended)
-Nexusuite is best executed on Windows through WSL2 Ubuntu, since most security tools are Linux-native.
-
-```powershell
-# Run PowerShell as Administrator
-wsl --install -d Ubuntu
-```
-
-After cloning the project:
-```powershell
-cd C:\AFUD\OWASP
-powershell -ExecutionPolicy Bypass -File .\run_windows.ps1
-```
-
-Diagnostic examples:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run_windows.ps1 --doctor
-powershell -ExecutionPolicy Bypass -File .\run_windows.ps1 --doctor-json
-```
-
----
-
-## 🚀 Usage
-```bash
-chmod +x nexusuite.sh
-./nexusuite.sh
-```
-
-Interactive flow:
-1. **Choose Startup Mode:** Select between `Manual` (AI for post-analysis only) or `AI Full Control` (Autonomous Pentester mode).
-2. Configure proxy mode and routing policy:
-   - `Best Effort`: falls back when strict proxy injection is unavailable.
-   - `Strict Proxy-Only`: skips unsupported network steps to avoid direct leaks.
-3. Provide target(s) (single host/domain, input file, or autonomous AI loading).
-4. Select modules to execute (if not in Full Control).
-5. Review generated reports and the HTML dashboard!
-
-Additional CLI modes:
-```bash
-./nexusuite.sh --doctor
-./nexusuite.sh --doctor-json
-./nexusuite.sh --dry-run
-./nexusuite.sh --platform-api
-./nexusuite.sh --platform-worker
-./nexusuite.sh --help
-```
-
-## 🏗️ Platform Mode (New)
-Platform mode upgrades Nexusuite into a queue-driven service layer:
-- Plugin-based tool runner via `config/tool_plugins/*.yaml`
-- Persistent state with SQLite (`platform_state.db`)
-- REST API for scans/jobs/findings
-- Lightweight Web UI timeline (`http://127.0.0.1:8787/ui`)
-- Unified finding schema with initial confidence + dedup merge
-- Replay failed jobs from API without full rerun
-- Policy-aware worker approval (tier low/medium/high)
-- Approval Center di UI/API untuk approve job `awaiting_approval`
-- Approval Center mendukung reject beralasan + bulk action
-
-Quick start:
-```bash
-# Terminal 1
-./nexusuite.sh --platform-api
-
-# Terminal 2
-./nexusuite.sh --platform-worker
-```
-
-## Scope Policy Precedence
-Nexusuite supports policy-driven scope guard through `config/risk_policy.yaml` (or custom path via `AI_RISK_POLICY_FILE` in `.env`).
-
-Scope evaluation order is:
-1. `scope_blocklist` and `scope_blocked_suffixes` (highest priority, immediate block)
-2. `scope_allowlist` (must match when defined)
-3. Private/local range checks (`scope_allow_private_ranges`, `scope_allow_localhost`)
-
-This means **blocklist always overrides allowlist**.
-
-Example:
-```yaml
-scope_allow_private_ranges: false
-scope_allow_localhost: false
-scope_allowlist: example.com,api.example.com
-scope_blocklist: admin.example.com,*.staging.example.com,*.internal
-scope_blocked_suffixes: .internal,.corp,.lan,.local,home.arpa
-```
-
-With the above policy:
-- `api.example.com` -> allowed
-- `admin.example.com` -> blocked (explicit blocklist)
-- `dev.staging.example.com` -> blocked (wildcard blocklist)
-- `service.internal` -> blocked (suffix blocklist)
-
-CLI mode details:
-- `./nexusuite.sh --doctor`
-  Runs a human-readable environment health check. Verifies required tools, Python module availability, and AI endpoint/model readiness (Ollama), then prints an operator-friendly status summary.
-- `./nexusuite.sh --doctor-json`
-  Runs the same health checks as `--doctor`, but outputs structured JSON for automation, CI/CD pipelines, or external monitoring/integration scripts.
-- `./nexusuite.sh --dry-run`
-  Simulates the full workflow without executing actual scan commands. Useful for validating configuration, module selection, target loading, and report flow safely before a real scan.
-- `./nexusuite.sh --platform-api`
-  Starts Nexusuite Platform API server and lightweight Web UI (`/ui`) for scan submission and monitoring.
-- `./nexusuite.sh --platform-worker`
-  Starts queue worker that continuously pulls pending jobs from SQLite state and executes plugin commands.
-- `./nexusuite.sh --help`
-  Displays command usage, available flags, and quick CLI references.
-
----
-
-## Output Structure
-Each scan session creates a timestamped output directory (for example: `OWASP_SCAN_YYYYMMDD_HHMMSS`).
-
-Main output entry points:
-- `README_OUTPUT.txt` (session-level navigation guide)
-- `report/full_report.txt` (consolidated text report)
-- `report/index.html` (dashboard report)
-- `report/targets_navigator.txt` (quick target navigation)
-- `report/file_map.csv` (machine-readable output map)
-
-Per-target navigation and logs:
-- `targets/<target>/README_TARGET.txt`
-- `targets/<target>/scan.log`
-- `targets/<target>/proxy_report.txt`
-
-Proxy audit aggregation:
-- `report/proxy_routing_summary.txt`
-- Included in `report/full_report.txt` and `report/index.html`
-
----
-
-## Repository Layout
 ```text
 Nexusuite/
-├── nexusuite.sh
-├── run_windows.ps1
-├── install.sh
-├── modules/
-└── ai_rag_tool/
-    ├── autonomous_pentester.py
-    ├── autonomous_pentester.sh
-    ├── ai_config.py
-    ├── ai_config.sh
-    ├── rag_assistant.py
-    ├── update_dataset.py
-    └── requirements.txt
+├── nx_platform/v4/         # Core Engine & API
+│   ├── ai_agent/           # Logika AI Agent & Payload Gen
+│   ├── api/                # FastAPI Routes & Models
+│   ├── core/               # Bootstrap, Registry, Auth, Storage
+│   ├── engine/             # Orchestrator & Worker Logic
+│   └── static/             # Dashboard Assets (JS/CSS)
+├── config/                 # Tool Plugins & Risk Policies
+├── results/                # Output pemindaian & laporan
+├── ai_rag_tool/            # Modul RAG & Dataset Exploit
+├── nexusuite.sh            # Entry point legacy (Shell)
+└── platform_state.db       # Database SQLite (Auto-generated)
 ```
 
 ---
 
-## Legal Notice
-This project is intended for authorized security testing, bug bounty programs, and defensive research only.
+## 🛠 Troubleshooting
 
-Do not scan or exploit systems without explicit permission. Unauthorized access attempts are illegal. The authors and contributors are not responsible for misuse.
+| Masalah | Solusi |
+| :--- | :--- |
+| `ModuleNotFoundError` | Jalankan kembali `python nx_platform/v4/core/bootstrap.py` untuk memastikan semua library terinstal. |
+| AI Agent Gagal (Ollama) | Pastikan server Ollama berjalan (`ollama serve`) dan model yang dikonfigurasi di `.env` sudah di-pull. |
+| Tool tidak ditemukan | Cek PATH Anda atau jalankan `./install.sh` kembali. |
+| Error Database | Hapus `platform_state.db` (Hati-hati: data lama akan hilang) dan jalankan aplikasi kembali untuk inisialisasi ulang. |
+
+---
+
+## 🤝 Kontribusi & Lisensi
+
+Kami sangat menghargai kontribusi dari komunitas! Silakan buka *Issue* atau kirimkan *Pull Request* untuk perbaikan bug atau fitur baru.
+
+**Nexusuite** didistribusikan di bawah **[Lisensi MIT](LICENSE)**.
+
+---
+
+## ⚖️ Legal Notice
+
+> **Peringatan:** Nexusuite dibuat hanya untuk tujuan pendidikan dan pengujian keamanan yang sah. Penggunaan alat ini untuk menyerang target tanpa izin tertulis adalah ilegal dan tidak etis. Penulis tidak bertanggung jawab atas penyalahgunaan atau kerusakan yang disebabkan oleh alat ini.
+
+---
+<p align="center">Made with ❤️ for the Security Community</p>
