@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/your-username/nexusuite/main/static/img/logo.png" alt="Nexusuite Logo" width="200">
+  <img src="Nexusuite_logo.png" alt="Nexusuite Logo" width="600">
 </p>
 
 <h1 align="center">Nexusuite v4.1.0</h1>
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/your-username/nexusuite/releases"><img src="https://img.shields.io/github/v/release/your-username/nexusuite?style=for-the-badge&color=blue" alt="Release"></a>
+  <a href="https://github.com/afrizalwahyuadi66/nexusuite/releases"><img src="https://img.shields.io/github/v/release/your-username/nexusuite?style=for-the-badge&color=blue" alt="Release"></a>
   <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python Version"></a>
   <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"></a>
   <a href="https://ollama.com"><img src="https://img.shields.io/badge/AI-Ollama%20+%20RAG-000000?style=for-the-badge&logo=ollama&logoColor=white" alt="Ollama AI"></a>
