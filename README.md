@@ -10,7 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/afrizalwahyuadi66/nexusuite/releases"><img src="https://img.shields.io/github/v/release/your-username/nexusuite?style=for-the-badge&color=blue" alt="Release"></a>
+  <img src="https://img.shields.io/badge/Security-Autonomous%20AI-red?style=for-the-badge&logo=target&logoColor=white" alt="Autonomous AI">
+  <img src="https://img.shields.io/badge/Engine-V4.1.0--PTES-blueviolet?style=for-the-badge&logo=engine&logoColor=white" alt="Engine Version">
   <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python Version"></a>
   <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"></a>
   <a href="https://ollama.com"><img src="https://img.shields.io/badge/AI-Ollama%20+%20RAG-000000?style=for-the-badge&logo=ollama&logoColor=white" alt="Ollama AI"></a>
