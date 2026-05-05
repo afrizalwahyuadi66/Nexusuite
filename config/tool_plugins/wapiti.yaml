@@ -1,0 +1,6 @@
+name: wapiti
+tier: high
+timeout_sec: 1200
+command_template: wapiti -u {target} -m common,xss,sql,exec,file -f json -o {output_file}
+description: Web vuln injector
+risk: high

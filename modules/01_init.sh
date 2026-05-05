@@ -60,6 +60,30 @@ wait_for_internet() {
     echo -e "\033[1;32m[✓] Internet connection restored.\033[0m"
 }
 
+# --- Structured Logging (JSON) ---
+log_event_json() {
+    local stat="$1"
+    local target="$2"
+    local tool="$3"
+    local msg="$4"
+    local level="${5:-info}"
+    
+    local log_file_json="${OUTPUT_BASE}/scan_events.json"
+    
+    if command -v jq >/dev/null 2>&1; then
+        jq -n \
+            --arg ts "$(date -Iseconds)" \
+            --arg stat "$stat" \
+            --arg target "$target" \
+            --arg tool "$tool" \
+            --arg msg "$msg" \
+            --arg level "$level" \
+            '{timestamp: $ts, status: $stat, target: $target, tool: $tool, message: $msg, level: $level}' \
+            >> "$log_file_json"
+    fi
+}
+export -f log_event_json
+
 # --- Terminal Logging Formatter ---
 log_msg() {
     local stat="$1"
@@ -72,16 +96,17 @@ log_msg() {
     # Modern icons based on status
     local icon="⚡"
     local bg_color="\033[40m" # Default background
+    local log_level="info"
     
     case "$stat" in
         ">") icon="🚀" ; bg_color="\033[44m" ;;
         "✓") icon="✅" ; bg_color="\033[42m" ;;
-        "!") icon="❌" ; bg_color="\033[41m" ;;
+        "!") icon="❌" ; bg_color="\033[41m" ; log_level="error" ;;
         "↻") icon="🔄" ; bg_color="\033[43m" ;;
         "i") icon="💡" ; bg_color="\033[46m" ;;
         "+") icon="➕" ; bg_color="\033[45m" ;;
         "🤖"|"AI") icon="🧠" ; bg_color="\033[45m" ;;
-        "🔥"|"OVERLORD") icon="☢️" ; bg_color="\033[41m" ;;
+        "🔥"|"OVERLORD") icon="☢️" ; bg_color="\033[41m" ; log_level="critical" ;;
         "🏁") icon="🏆" ; bg_color="\033[42m" ;;
     esac
     
@@ -98,6 +123,9 @@ log_msg() {
     
     # Log to global scan log
     echo "[$time_now] [$stat] $target | $tool | $msg" >> "$LOG_FILE"
+    
+    # Log to JSON for external integrations
+    log_event_json "$stat" "$target" "$tool" "$msg" "$log_level"
 }
 export -f log_msg
 
@@ -118,11 +146,23 @@ declare -A TOOL_DESC=(
     ["wafw00f"]="Web Application Firewall Fingerprinting"
 )
 
+# --- Configuration ---
+export V4_API_URL="${V4_API_URL:-http://localhost:8000}"
+export V4_API_KEY="${V4_API_KEY:-admin-secret-key}"
+export ENABLE_V4_SHADOW="${ENABLE_V4_SHADOW:-true}"
+export AI_AGENT_MODE="${AI_AGENT_MODE:-nx_advanced}"
+
 # --- Header ---
 # Mengecek status Ollama secara diam-diam untuk header
 AI_STATUS_TEXT="🤖 AI Agent: NON-AKTIF"
 if command -v curl &> /dev/null && curl -s -m 1 http://localhost:11434/ > /dev/null; then
     AI_STATUS_TEXT="🤖 AI Agent: AKTIF (Ready)"
+fi
+
+# Mengecek status Nexusuite V4 API
+V4_STATUS_TEXT="🌐 V4 API: OFFLINE"
+if command -v curl &> /dev/null && curl -s -m 1 "$V4_API_URL/health" > /dev/null; then
+    V4_STATUS_TEXT="🌐 V4 API: ONLINE (v4.1)"
 fi
 
 echo -e "\033[1;36m"
@@ -138,8 +178,13 @@ echo -e "\033[0m"
 gum style \
     --border double --align center --width 75 --margin "0 0 1 0" --padding "0 2" \
     --foreground 45 --border-foreground 39 \
-    "v$VERSION" "Professional Web & Network Vulnerability Scanner" "$AI_STATUS_TEXT"
+    "v$VERSION" "Professional Web & Network Vulnerability Scanner" "$AI_STATUS_TEXT" "$V4_STATUS_TEXT"
 
-# --- Temporary variables for Output Directory ---
-# Output Base di-set awalnya hanya dengan timestamp. Nama domain akan ditambahkan nanti di 02_prompts.sh
-export NEW_OUTPUT_BASE="SCAN_$(date +%Y%m%d_%H%M%S)"
+# --- Output Directory Standard (v4.1) ---
+# Seluruh hasil scan akan dipusatkan di folder 'Result/'
+export GLOBAL_RESULT_DIR="Result"
+mkdir -p "$GLOBAL_RESULT_DIR"
+
+# Timestamp global untuk penanda sesi
+export SESSION_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+export NEW_OUTPUT_BASE="SCAN_$SESSION_TIMESTAMP"

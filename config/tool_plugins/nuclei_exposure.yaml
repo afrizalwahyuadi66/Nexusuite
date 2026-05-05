@@ -1,0 +1,6 @@
+name: nuclei_exposure
+tier: low
+timeout_sec: 300
+command_template: nuclei -u {target} -tags exposure -silent -jsonl
+description: Scan for sensitive data exposure
+risk: low

@@ -42,6 +42,125 @@ scope_guard_target() {
     return 0
 }
 
+# --- AI Query Helper ---
+ai_query() {
+    local prompt="$1"
+    local system_context="${2:-"Kamu adalah expert cybersecurity assistant."}"
+    local output_file="${3:-}"
+    local timeout="${AI_HTTP_TIMEOUT:-300}"
+    
+    # Validasi jq
+    if ! command -v jq >/dev/null 2>&1; then
+        echo '{"error": "jq not found"}'
+        return 1
+    fi
+
+    local payload
+    payload=$(jq -n \
+        --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" \
+        --arg system "$system_context" \
+        --arg prompt "$prompt" \
+        '{model: $model, system: $system, prompt: $prompt, stream: false}')
+    
+    local response
+    response=$(ollama_curl -fsS -m "$timeout" -X POST \
+        "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" \
+        -H "Content-Type: application/json" -d "$payload" 2>/dev/null || echo '{"error": "connection failed"}')
+    
+    local raw_text
+    raw_text=$(echo "$response" | jq -r '.response // empty' 2>/dev/null || true)
+    
+    local clean_resp
+    if [[ -n "$raw_text" ]]; then
+        clean_resp=$(echo "$raw_text" | clean_json_response)
+    else
+        clean_resp=""
+    fi
+    
+    if [[ -n "$output_file" ]]; then
+        echo "$clean_resp" > "$output_file"
+    fi
+    echo "$clean_resp"
+}
+export -f ai_query
+
+# --- AI Pipeline Orchestrator (v4.1) ---
+# Mengelola siklus hidup 6-tahap: Recon > Vuln > Exploit > Payload > Proof > Report
+ai_orchestrate_pipeline() {
+    local target="$1"
+    local job_id="$2"
+    local target_dir="$3"
+    
+    log_msg "AI" "\033[1;35m" "$target" "PIPELINE" "Entering Nexusuite Standard Offensive Pipeline (Autonomous)..."
+    
+    # Inisialisasi State di Database via Python Engine
+    local _v4_api_url="${V4_API_URL:-http://localhost:8000}"
+    
+    # 1. Panggil Advanced AI Engine untuk mulai berpikir
+    log_msg "AI" "\033[1;35m" "$target" "THINK" "AI is planning the offensive strategy..."
+    
+    # Integrasi dengan Python Engine nx_ai_engine.py
+    # Kita menggunakan API POST /api/v1/scan yang sudah kita update sebelumnya
+    local _payload
+    _payload=$(jq -n \
+        --arg url "$target" \
+        --arg mode "nx_advanced" \
+        --arg job_id "$job_id" \
+        '{url: $url, ai_mode: $mode, job_id: $job_id, force_enum: true}')
+        
+    local _response
+    _response=$(curl -s -X POST "$_v4_api_url/api/v1/scan" \
+         -H "Content-Type: application/json" \
+         -H "X-API-Key: admin-secret-key" \
+         -d "$_payload")
+         
+    if [[ "$_response" == *"id"* ]]; then
+        local _new_job_id
+        _new_job_id=$(echo "$_response" | jq -r '.id')
+        log_msg "✓" "\033[1;32m" "$target" "PIPELINE" "AI Engine active. Mission ID: $_new_job_id"
+        
+        # Monitor progress secara otonom
+        local _status="running"
+        local _last_log_idx=0
+        while [[ "$_status" == "running" ]]; do
+            sleep 5
+            local _job_data
+            _job_data=$(curl -s "$_v4_api_url/api/v1/scan/$_new_job_id")
+            _status=$(echo "$_job_data" | jq -r '.status' 2>/dev/null || echo "running")
+            
+            # Ambil semua log baru sejak pengecekan terakhir
+            local _current_logs
+            _current_logs=$(echo "$_job_data" | jq -c '.logs' 2>/dev/null)
+            
+            if [[ -n "$_current_logs" && "$_current_logs" != "null" ]]; then
+                local _num_logs
+                _num_logs=$(echo "$_current_logs" | jq 'length')
+                
+                while [[ $_last_log_idx -lt $_num_logs ]]; do
+                    local _log_line
+                    _log_line=$(echo "$_current_logs" | jq -r ".[$_last_log_idx]")
+                    
+                    if [[ "$_log_line" == "➔ [SENT TO AI]"* ]]; then
+                        log_msg "📤" "\033[1;33m" "$target" "AI_INPUT" "$_log_line"
+                    elif [[ "$_log_line" == "🤖 [AI RESPONSE]"* ]]; then
+                        log_msg "📥" "\033[1;32m" "$target" "AI_PLAN" "$_log_line"
+                    else
+                        log_msg "🤖" "\033[1;34m" "$target" "AI_EXEC" "$_log_line"
+                    fi
+                    
+                    ((_last_log_idx++))
+                done
+            fi
+        done
+        
+        log_msg "🏁" "\033[1;32m" "$target" "PIPELINE" "Autonomous Mission Completed. Check Web Dashboard (Port 8000)."
+    else
+        log_msg "!" "\033[1;31m" "$target" "PIPELINE" "Failed to handoff mission to AI Engine. Reverting to local Shell logic."
+        return 1
+    fi
+}
+export -f ai_orchestrate_pipeline
+
 write_state_snapshot() {
     local snapshot_file="$OUTPUT_BASE/.state_snapshot.json"
     local selected_tools="${SELECTED_TOOLS:-}"

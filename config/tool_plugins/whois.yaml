@@ -1,0 +1,6 @@
+name: whois
+tier: low
+timeout_sec: 60
+command_template: whois {target}
+description: Domain WHOIS lookup
+risk: low

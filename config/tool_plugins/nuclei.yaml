@@ -1,4 +1,6 @@
 name: nuclei
 tier: medium
 timeout_sec: 1200
-command_template: nuclei -u {target} -silent -o {output}
+command_template: nuclei -u {target} -severity low,medium,high,critical -silent -jsonl -rl 50
+description: Template-based vulnerability scanner with large community database.
+risk: medium

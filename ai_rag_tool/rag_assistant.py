@@ -13,7 +13,10 @@ except ImportError:
 # atau jika ingin Vector DB beneran, bisa pakai sentence-transformers.
 # Demi "sangat ringan" dan tanpa instalasi berat di awal, kita mulai dengan pencocokan pintar.
 import difflib
-from ai_config import get_ai_settings
+try:
+    from .ai_config import get_ai_settings
+except (ImportError, ValueError):
+    from ai_config import get_ai_settings
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'exploit_db_real.json')
 AI_SETTINGS = get_ai_settings()
@@ -50,23 +53,68 @@ def load_db():
     with open(DB_PATH, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-def retrieve_context(query, db, top_k=1):
+def retrieve_context(query, db, top_k=2):
     """
-    Retrieval ringan: Mengambil konteks dari database dummy kita berdasarkan kemiripan query
-    dengan software/vulnerability di database.
+    Enhanced Retrieval: Menggunakan pembobotan kata kunci dan difflib untuk akurasi lebih baik.
     """
-    # Menggabungkan semua text di DB sebagai corpus
-    corpus = [f"{item['software']} {item['version']} {item['vulnerability']} {item['description']}" for item in db]
-    
-    # Mencari yang paling mirip menggunakan difflib (Ringan, tanpa GPU/RAM besar)
-    matches = difflib.get_close_matches(query, corpus, n=top_k, cutoff=0.1)
-    
-    contexts = []
-    for match in matches:
-        idx = corpus.index(match)
-        contexts.append(db[idx])
+    if not db:
+        return []
         
-    return contexts
+    # Ekstraksi kata kunci penting dari query (software, version, CVE)
+    query_lower = query.lower()
+    
+    scored_items = []
+    for item in db:
+        score = 0
+        software = item.get('software', '').lower()
+        version = item.get('version', '').lower()
+        vuln = item.get('vulnerability', '').lower()
+        
+        # Exact match boost
+        if software in query_lower and software != "":
+            score += 5
+        if version in query_lower and version != "":
+            score += 10
+        if "cve" in query_lower and "cve" in vuln:
+            # Jika query dan DB sama-sama punya CVE
+            import re
+            cve_pattern = re.compile(r'cve-\d{4}-\d+')
+            q_cves = set(cve_pattern.findall(query_lower))
+            db_cves = set(cve_pattern.findall(vuln))
+            if q_cves.intersection(db_cves):
+                score += 50
+        
+        # Fuzzy match
+        corpus_item = f"{software} {version} {vuln}".strip()
+        similarity = difflib.SequenceMatcher(None, query_lower, corpus_item).ratio()
+        score += similarity * 20
+        
+        if score > 0:
+            scored_items.append((score, item))
+            
+    # Sort by score descending
+    scored_items.sort(key=lambda x: x[0], reverse=True)
+    
+    return [item for score, item in scored_items[:top_k]]
+
+def web_search(query, max_results=5):
+    """
+    Integrasi Pencarian Web (DuckDuckGo) untuk memperkaya data RAG.
+    """
+    try:
+        from duckduckgo_search import DDGS
+        print(f"[*] Menjalankan Web Intelligence untuk: {query}")
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+            
+        intel = []
+        for r in results:
+            intel.append(f"Title: {r['title']}\nSnippet: {r['body']}\nURL: {r['href']}")
+        
+        return "\n\n".join(intel)
+    except Exception as e:
+        print(f"[-] Web search failed: {e}")
+        return ""
 
 def generate_payload(query, context):
     """

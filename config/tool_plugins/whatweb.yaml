@@ -1,0 +1,6 @@
+name: whatweb
+tier: low
+timeout_sec: 180
+command_template: whatweb -a 3 {target} --color=never
+description: Identify technologies on websites
+risk: low

@@ -1,0 +1,6 @@
+name: nikto
+tier: medium
+timeout_sec: 900
+command_template: nikto -h {target} -Tuning 1,2,3,4,8,9 -maxtime 15m -nointeractive -Format json -o {output_file}
+description: Web server vulnerability scanner
+risk: medium

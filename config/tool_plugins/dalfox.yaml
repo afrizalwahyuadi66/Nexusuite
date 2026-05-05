@@ -1,4 +1,6 @@
 name: dalfox
 tier: high
 timeout_sec: 1800
-command_template: dalfox url {target} --silence --no-color --output {output}
+command_template: dalfox url {target} --silence --no-color --mining-dict --worker 10
+description: Advanced XSS scanner with parameter mining.
+risk: medium

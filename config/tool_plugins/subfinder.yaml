@@ -1,0 +1,6 @@
+name: subfinder
+tier: low
+timeout_sec: 300
+command_template: subfinder -d {target} -silent -all -recursive
+description: Passive subdomain enumeration
+risk: low

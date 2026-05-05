@@ -87,6 +87,50 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
     
     log_msg ">" "\033[1;36m" "$target_name" "AUDIT" "Verifying raw vulnerability logs..."
     
+    # 0. Audit AI-Verified Findings (v4.1)
+    # Menarik temuan yang sudah diverifikasi oleh Nexusuite AI Engine dari Database
+    _v4_api_url="${V4_API_URL:-http://localhost:8000}"
+    if curl -s --max-time 2 "$_v4_api_url/health" >/dev/null 2>&1; then
+        # Cari job_id yang relevan dengan target ini
+        # (Dalam pipeline otonom, job_id biasanya dikelola secara internal)
+        # Untuk audit, kita ambil temuan terstruktur terbaru untuk target ini
+        _ai_findings=$(curl -s "$_v4_api_url/api/v1/scans" | jq -r --arg target "$target_name" 'if type == "array" then .[] | select(.target | contains($target)) | .id else empty end' | head -n 1)
+        
+        if [[ -n "$_ai_findings" && "$_ai_findings" != "null" ]]; then
+            log_msg "AI" "\033[1;35m" "$target_name" "AUDIT" "Syncing AI-Verified findings from Database (Job: $_ai_findings)"
+            _structured_data=$(curl -s "$_v4_api_url/api/v1/scan/$_ai_findings")
+            
+            # Parse Vulnerabilities
+            echo "$_structured_data" | jq -c '.structured_vulnerabilities[]' 2>/dev/null | while read -r vuln; do
+                v_name=$(echo "$vuln" | jq -r '.name // .vuln_name')
+                v_sev=$(echo "$vuln" | jq -r '.severity')
+                v_desc=$(echo "$vuln" | jq -r '.description')
+                v_port=$(echo "$vuln" | jq -r '.port')
+                v_fix=$(echo "$vuln" | jq -r '.fixes[0].fix_text // "See full report"')
+                
+                append_audit_finding \
+                    "$AUDIT_FILE" "$AUDIT_JSONL_FILE" "$target_name" "AI-VERIFIED" "$v_sev" \
+                    "$target_name" "$v_port" \
+                    "AI Verified Finding: $v_name - $v_desc" \
+                    "REMEDIATION: $v_fix"
+            done
+            
+            # Parse Exploits
+            echo "$_structured_data" | jq -c '.structured_exploits[]' 2>/dev/null | while read -r exp; do
+                e_name=$(echo "$exp" | jq -r '.exploit_name')
+                e_tool=$(echo "$exp" | jq -r '.tool_used')
+                e_payload=$(echo "$exp" | jq -r '.payload')
+                e_res=$(echo "$exp" | jq -r '.result')
+                
+                append_audit_finding \
+                    "$AUDIT_FILE" "$AUDIT_JSONL_FILE" "$target_name" "AI-EXPLOIT" "critical" \
+                    "$target_name" "N/A" \
+                    "AI Verified Exploit: $e_name via $e_tool ($e_res)" \
+                    "PAYLOAD: $e_payload"
+            done
+        fi
+    fi
+
     # 1. Audit SQLMap: Mencari indikasi injeksi sukses ([CRITICAL] atau adanya file target.txt)
     if [[ -d "$target_dir/vulnerabilities/sqlmap" ]]; then
         while IFS= read -r logfile; do
@@ -144,7 +188,25 @@ for target_dir in "$OUTPUT_BASE/targets/"*; do
     fi
     
     # 3. Audit Nuclei: Menyaring hanya temuan [critical] dan [high] untuk mengabaikan false-positive/informational
-    if [[ -s "$target_dir/vulnerabilities/nuclei.txt" ]]; then
+    # PRIORITAS: Menggunakan output JSON jika tersedia untuk parsing yang lebih akurat
+    NUCLEI_JSON="$target_dir/vulnerabilities/nuclei.json"
+    if [[ -s "$NUCLEI_JSON" ]]; then
+        while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            template_id=$(echo "$line" | jq -r '."template-id" // empty')
+            name=$(echo "$line" | jq -r '.info.name // empty')
+            severity=$(echo "$line" | jq -r '.info.severity // empty')
+            matched_at=$(echo "$line" | jq -r '."matched-at" // empty')
+            
+            if [[ "$severity" == "high" || "$severity" == "critical" ]]; then
+                append_audit_finding \
+                    "$AUDIT_FILE" "$AUDIT_JSONL_FILE" "$target_name" "Nuclei" "$severity" \
+                    "$matched_at" "N/A" \
+                    "Confirmed $severity severity finding ($template_id): $name" \
+                    "nuclei -t $template_id -u \"$matched_at\""
+            fi
+        done < <(cat "$NUCLEI_JSON")
+    elif [[ -s "$target_dir/vulnerabilities/nuclei.txt" ]]; then
         while IFS= read -r line; do
             nuclei_url="$(extract_first_url "$line")"
             sev="high"

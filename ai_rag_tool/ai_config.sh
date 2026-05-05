@@ -123,7 +123,8 @@ ollama_curl() {
 }
 
 clean_json_response() {
-    local raw="$1"
+    local raw="${1:-}"
+    [[ -z "$raw" ]] && return 0
     # Hapus tag <think>...</think> (termasuk newlines) yang dihasilkan model reasoning seperti DeepSeek-R1
     local no_think
     no_think=$(printf '%s' "$raw" | awk '

@@ -1,0 +1,6 @@
+name: ffuf
+tier: medium
+timeout_sec: 600
+command_template: ffuf -u {target}/FUZZ -w {wordlist} -mc 200,301,302,403 -recursion -recursion-depth 2 -silent -o {output} -of json
+description: Directory and file fuzzing for discovering hidden endpoints.
+risk: medium

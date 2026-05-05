@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexusuite V4 | Offensive Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            /* High Contrast Color Palette (WCAG 2.1 Compliant) */
+            --bg-dark: #0d1117;
+            --card-bg: #1c2128;
+            --accent: #44d660; /* Lighter green for better contrast */
+            --text-main: #ffffff; /* Pure white for max contrast */
+            --text-secondary: #adbac7; /* High contrast gray */
+            --text-muted: #768390;
+            --terminal-bg: #010409;
+            --border: #444c56; /* More visible border */
+            --critical: #ff6a69; /* Brighter red */
+            --high: #e3b341; /* Brighter gold */
+            --medium: #539bf5; /* Brighter blue */
+            --low: #768390;
+            --navbar-bg: #22272e;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .navbar {
+            background-color: var(--navbar-bg);
+            border-bottom: 2px solid var(--border);
+            padding: 0.75rem 1.5rem;
+        }
+
+        .navbar-brand {
+            color: var(--text-main) !important;
+            font-weight: 700;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            margin-bottom: 1rem;
+            color: var(--text-main);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .card-header {
+            background-color: rgba(255,255,255,0.05);
+            border-bottom: 1px solid var(--border);
+            font-weight: 700;
+            padding: 14px 18px;
+            color: var(--text-main);
+        }
+
+        .stats-card {
+            text-align: center;
+            padding: 1.5rem;
+            border: 2px solid var(--accent);
+        }
+
+        .stats-val {
+            font-size: 2.8rem;
+            font-weight: 800;
+            color: var(--accent);
+            text-shadow: 0 0 10px rgba(68, 214, 96, 0.2);
+        }
+
+        .terminal-container {
+            background-color: var(--terminal-bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            height: 520px;
+            overflow-y: auto;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.9rem;
+            color: #ffffff; /* Max visibility in terminal */
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            margin-bottom: 6px;
+            border-left: 4px solid transparent;
+            padding-left: 14px;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .log-info { border-left-color: var(--medium); color: #79c0ff; }
+        .log-success { border-left-color: var(--accent); color: var(--accent); }
+        .log-warning { border-left-color: var(--high); color: var(--high); }
+        .log-error { border-left-color: var(--critical); color: var(--critical); }
+
+        .finding-item {
+            padding: 18px;
+            border-bottom: 1px solid var(--border);
+            transition: all 0.2s;
+            background-color: rgba(255,255,255,0.01);
+        }
+        .finding-item:hover { background-color: rgba(255,255,255,0.06); }
+
+        .finding-critical { border-left: 6px solid var(--critical); background-color: rgba(248, 81, 73, 0.05); }
+        .finding-high { border-left: 6px solid var(--high); background-color: rgba(210, 153, 34, 0.05); }
+        .finding-medium { border-left: 6px solid var(--medium); background-color: rgba(88, 166, 255, 0.05); }
+        .finding-low { border-left: 6px solid var(--low); background-color: rgba(139, 148, 158, 0.05); }
+
+        .job-item {
+            cursor: pointer;
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+            display: block;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .job-item:hover { background-color: rgba(255,255,255,0.08); color: var(--text-main); }
+        .job-item.active { 
+            background-color: rgba(68, 214, 96, 0.15); 
+            border-left: 5px solid var(--accent); 
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .text-target {
+            color: var(--text-main);
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .badge-confidence {
+            background-color: var(--accent);
+            color: #000; /* Black text on green badge for contrast */
+            font-weight: 800;
+        }
+
+        .sys-info-bar {
+            background: var(--card-bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            gap: 25px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .sys-info-item i { color: var(--accent); margin-right: 8px; }
+
+        #search-logs, #search-jobs {
+            background-color: var(--terminal-bg);
+            border: 2px solid var(--border);
+            color: var(--text-main);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-weight: 500;
+        }
+        #search-logs::placeholder, #search-jobs::placeholder {
+            color: var(--text-muted);
+        }
+
+        .badge-status-running {
+            background-color: var(--accent) !important;
+            color: #000 !important;
+            font-weight: 800;
+            box-shadow: 0 0 15px rgba(68, 214, 96, 0.4);
+        }
+
+        .text-muted { color: var(--text-muted) !important; }
+        .text-info { color: var(--medium) !important; }
+        .text-danger { color: var(--critical) !important; }
+        .text-warning { color: var(--high) !important; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; border: 2px solid var(--bg-dark); }
+        ::-webkit-scrollbar-thumb:hover { background: #5c6370; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark sticky-top">
+    <div class="container-fluid">
+        <a class="navbar-brand font-monospace" href="#">
+            <i class="fas fa-shield-halved me-2 text-success"></i>NEXUSUITE <span class="text-muted">V4 DASHBOARD</span>
+        </a>
+        <div class="d-flex align-items-center">
+            <span class="text-muted me-3" id="connection-status">
+                <i class="fas fa-circle text-danger me-1"></i> Offline
+            </span>
+            <button class="btn btn-outline-success btn-sm" onclick="exportData('json')">
+                <i class="fas fa-download me-1"></i> Export JSON
+            </button>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid mt-4">
+    <!-- System Info Bar -->
+    <div class="sys-info-bar">
+        <div class="sys-info-item"><i class="fas fa-server"></i> Server: <span id="sys-server">Online</span></div>
+        <div class="sys-info-item"><i class="fas fa-microchip"></i> CPU: <span id="sys-cpu">--%</span></div>
+        <div class="sys-info-item"><i class="fas fa-memory"></i> RAM: <span id="sys-ram">--%</span></div>
+        <div class="sys-info-item"><i class="fas fa-network-wired"></i> Uptime: <span id="sys-uptime">00:00:00</span></div>
+    </div>
+
+    <div class="row">
+        <!-- Sidebar: Active Jobs -->
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Active Scans</span>
+                    <span class="badge bg-success" id="total-jobs-count">0</span>
+                </div>
+                <div class="p-2">
+                    <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="search-jobs" placeholder="Search target...">
+                </div>
+                <div id="job-list" class="list-group list-group-flush">
+                    <div class="p-3 text-center text-muted">No active scans</div>
+                </div>
+            </div>
+
+            <div class="card stats-card">
+                <div class="text-muted small mb-1">Live Findings</div>
+                <div class="stats-val" id="total-findings-count">0</div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">Finding Distribution</div>
+                <div class="chart-container">
+                    <canvas id="findingsChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard Area -->
+        <div class="col-md-9">
+            <!-- Summary Header -->
+            <div class="row mb-3" id="job-details-header" style="display: none;">
+                <div class="col-12">
+                    <div class="card p-3 shadow-lg" style="border-left: 5px solid var(--accent);">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h3 class="mb-0 text-white" id="current-target">target.com</h3>
+                                <div class="text-muted small mt-1"><i class="fas fa-fingerprint me-1"></i> Job ID: <span id="current-job-id" class="font-monospace">--</span></div>
+                            </div>
+                            <div class="d-flex gap-3 align-items-center">
+                                <div class="text-end">
+                                    <div class="text-muted small mb-1">Status</div>
+                                    <span class="badge bg-dark border border-success text-success p-2 px-3" id="current-status" style="letter-spacing: 1px;">IDLE</span>
+                                </div>
+                                <button class="btn btn-danger btn-sm" id="btn-stop-scan">
+                                    <i class="fas fa-stop me-1"></i> Stop Scan
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Logs / Terminal -->
+                <div class="col-md-8">
+                    <div class="card h-100 shadow">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-terminal me-2 text-info"></i>Activity Logs</span>
+                            <div class="d-flex align-items-center gap-3">
+                                <input type="text" id="search-logs" placeholder="Filter logs...">
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="auto-scroll" checked>
+                                    <label class="form-check-label text-muted small" for="auto-scroll">Scroll</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="terminal-container" id="terminal-logs">
+                            <div class="text-center mt-5 text-muted">
+                                <i class="fas fa-satellite-dish fa-3x mb-3 d-block"></i>
+                                Select a target to initiate signal monitoring...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Findings Panel -->
+                <div class="col-md-4">
+                    <div class="card h-100 shadow">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-skull me-2 text-danger"></i>Evidence</span>
+                            <button class="btn btn-link btn-sm text-muted p-0" onclick="clearFindings()"><i class="fas fa-trash"></i></button>
+                        </div>
+                        <div id="findings-container" style="max-height: 500px; overflow-y: auto;">
+                            <div class="p-4 text-center text-muted">No evidence captured</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    let currentJobId = null;
+    let allJobs = {};
+    const pollInterval = 1000;
+    let findingsChart = null;
+
+    // Initialize Chart
+    function initChart() {
+        const ctx = document.getElementById('findingsChart').getContext('2d');
+        findingsChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Subfinder', 'Nuclei', 'Httpx', 'Sqlmap', 'Dalfox'],
+                datasets: [{
+                    data: [0, 0, 0, 0, 0],
+                    backgroundColor: ['#58a6ff', '#f85149', '#3fb950', '#d29922', '#bc8cff'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#8b949e', font: { size: 10 } } }
+                },
+                cutout: '70%'
+            }
+        });
+    }
+
+    function updateChart(findings) {
+        if (!findingsChart) return;
+        const counts = { 'subfinder': 0, 'nuclei': 0, 'httpx': 0, 'sqlmap': 0, 'dalfox': 0 };
+        findings.forEach(f => {
+            const tool = f.tool.toLowerCase();
+            if (counts.hasOwnProperty(tool)) counts[tool]++;
+            else if (tool.includes('nuclei')) counts['nuclei']++;
+        });
+        findingsChart.data.datasets[0].data = Object.values(counts);
+        findingsChart.update();
+    }
+
+    function updateConnectionStatus(online) {
+        const statusEl = document.getElementById('connection-status');
+        if (online) {
+            statusEl.innerHTML = '<i class="fas fa-circle text-success me-1"></i> Online';
+        } else {
+            statusEl.innerHTML = '<i class="fas fa-circle text-danger me-1"></i> Offline';
+        }
+    }
+
+    async function fetchAllJobs() {
+        try {
+            const response = await fetch('/api/v1/scans');
+            if (!response.ok) throw new Error('Network response was not ok');
+            const data = await response.json();
+            allJobs = data;
+            renderJobList();
+            updateStats();
+            updateConnectionStatus(true);
+            updateSystemInfo();
+            
+            if (currentJobId && allJobs[currentJobId]) {
+                renderJobDetails(currentJobId);
+            }
+        } catch (error) {
+            console.error('Error fetching jobs:', error);
+            updateConnectionStatus(false);
+        }
+    }
+
+    function updateSystemInfo() {
+        // Mock system info (can be replaced with real API later)
+        document.getElementById('sys-cpu').innerText = Math.floor(Math.random() * 30 + 10) + '%';
+        document.getElementById('sys-ram').innerText = Math.floor(Math.random() * 20 + 40) + '%';
+        // Simple uptime counter logic could go here
+    }
+
+    function renderJobList() {
+        const jobListEl = document.getElementById('job-list');
+        const searchTerm = document.getElementById('search-jobs').value.toLowerCase();
+        const jobs = Object.entries(allJobs).filter(([id, job]) => 
+            job.target.toLowerCase().includes(searchTerm) || id.includes(searchTerm)
+        );
+        
+        if (jobs.length === 0) {
+            jobListEl.innerHTML = '<div class="p-3 text-center text-muted">No matches found</div>';
+            return;
+        }
+
+        document.getElementById('total-jobs-count').innerText = Object.keys(allJobs).length;
+
+        let html = '';
+        jobs.forEach(([id, job]) => {
+            const activeClass = id === currentJobId ? 'active' : '';
+            const statusClass = `status-${job.status}`;
+            html += `
+                <div class="job-item ${activeClass}" onclick="selectJob('${id}')">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="text-truncate text-target" style="max-width: 180px;">${job.target}</span>
+                        <span class="status-dot ${statusClass}"></span>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1">
+                        <small class="text-muted font-monospace" style="font-size: 0.65rem;">${id.substring(0, 10)}...</small>
+                        <small class="text-muted" style="font-size: 0.65rem;"><i class="fas fa-bug me-1"></i>${job.findings.length}</small>
+                    </div>
+                </div>
+            `;
+        });
+        jobListEl.innerHTML = html;
+    }
+
+    function selectJob(id) {
+        currentJobId = id;
+        document.getElementById('job-details-header').style.display = 'block';
+        renderJobList();
+        
+        // Reset and full render for logs
+        const terminal = document.getElementById('terminal-logs');
+        terminal.innerHTML = '';
+        const job = allJobs[id];
+        if (job && job.logs) {
+            job.logs.forEach(log => appendLog(log));
+        }
+        
+        if (job && job.findings) {
+            updateChart(job.findings);
+        }
+    }
+
+    function renderJobDetails(id) {
+        const job = allJobs[id];
+        if (!job) return;
+
+        document.getElementById('current-target').innerText = job.target;
+        document.getElementById('current-job-id').innerText = id;
+        document.getElementById('current-status').innerText = job.status.toUpperCase();
+        
+        // Update Findings
+        const findingsContainer = document.getElementById('findings-container');
+        if (job.findings && job.findings.length > 0) {
+            let html = '';
+            job.findings.forEach(f => {
+                const evidence = f.data.evidence || f.data.url || JSON.stringify(f.data);
+                const severityClass = getSeverityClass(f);
+                html += `
+                    <div class="finding-item ${severityClass}">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <span class="badge bg-dark border border-secondary text-info small">${f.tool.toUpperCase()}</span>
+                            <span class="badge badge-confidence">CONF: ${f.confidence}</span>
+                        </div>
+                        <div class="small text-break font-monospace" style="color: #e6edf3;">${evidence}</div>
+                        <div class="mt-2 text-end">
+                             <small class="text-muted" style="font-size: 0.6rem;">SHA256: ${f.sha256 ? f.sha256.substring(0,8) : 'N/A'}</small>
+                        </div>
+                    </div>
+                `;
+            });
+            findingsContainer.innerHTML = html;
+            updateChart(job.findings);
+        }
+
+        // Update Logs (incremental)
+        const terminal = document.getElementById('terminal-logs');
+        const currentLogCount = terminal.querySelectorAll('.log-entry').length;
+        if (job.logs && job.logs.length > currentLogCount) {
+            for (let i = currentLogCount; i < job.logs.length; i++) {
+                appendLog(job.logs[i]);
+            }
+        }
+    }
+
+    function getSeverityClass(finding) {
+        const tool = finding.tool.toLowerCase();
+        if (tool.includes('nuclei') || tool.includes('sqlmap')) return 'finding-critical';
+        if (tool.includes('dalfox')) return 'finding-high';
+        if (tool.includes('httpx')) return 'finding-medium';
+        return 'finding-low';
+    }
+
+    function appendLog(msg) {
+        const searchTerm = document.getElementById('search-logs').value.toLowerCase();
+        if (searchTerm && !msg.toLowerCase().includes(searchTerm)) return;
+
+        const terminal = document.getElementById('terminal-logs');
+        const div = document.createElement('div');
+        div.className = 'log-entry';
+        
+        if (msg.includes('[+]')) div.classList.add('log-success');
+        else if (msg.includes('[!]')) div.classList.add('log-error');
+        else if (msg.includes('[i]')) div.classList.add('log-info');
+        else if (msg.includes('[*]')) div.classList.add('log-info');
+        
+        div.innerText = msg;
+        terminal.appendChild(div);
+
+        if (document.getElementById('auto-scroll').checked) {
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+    }
+
+    function updateStats() {
+        let total = 0;
+        Object.values(allJobs).forEach(job => {
+            if (job.findings) total += job.findings.length;
+        });
+        document.getElementById('total-findings-count').innerText = total;
+    }
+
+    async function stopScan() {
+        if (!currentJobId) return;
+        if (!confirm('WARNING: Are you sure you want to terminate this offensive operation?')) return;
+
+        try {
+            const response = await fetch(`/api/v1/scan/${currentJobId}`, { method: 'DELETE' });
+            if (response.ok) {
+                fetchAllJobs();
+            }
+        } catch (error) {
+            console.error('Error stopping scan:', error);
+        }
+    }
+
+    function clearFindings() {
+        if(confirm('Clear current evidence view?')) {
+            document.getElementById('findings-container').innerHTML = '<div class="p-4 text-center text-muted">No evidence captured</div>';
+        }
+    }
+
+    function exportData(format) {
+        if (!currentJobId || !allJobs[currentJobId]) {
+            alert('Please select an active operation first');
+            return;
+        }
+        
+        const job = allJobs[currentJobId];
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(job, (key, value) => {
+            if (key.startsWith('_')) return undefined; // Filter private fields
+            return value;
+        }, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", `nexusuite_report_${job.target}_${currentJobId}.json`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    }
+
+    document.getElementById('btn-stop-scan').onclick = stopScan;
+    document.getElementById('search-jobs').oninput = renderJobList;
+    document.getElementById('search-logs').oninput = () => {
+        if (currentJobId) selectJob(currentJobId); // Re-render logs with filter
+    };
+
+    // Initialize
+    window.onload = () => {
+        initChart();
+        setInterval(fetchAllJobs, pollInterval);
+        fetchAllJobs();
+    };
+</script>
+
+</body>
+</html>

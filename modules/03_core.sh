@@ -73,7 +73,7 @@ process_target() {
     local AI_PLAN_PROFILE_PRIMARY="balanced"
     local AI_PLAN_PROFILE_BACKUP="web"
     local AI_PLANNER_ENABLED=0
-    
+
     local TARGET_DISPLAY="$TARGET"
     cmd_fingerprint() {
         local raw="$1"
@@ -96,14 +96,10 @@ process_target() {
     local STATUS_FILE="$OUTPUT_BASE/.status/${TARGET_SAFE}.active"
     local TARGET_FINALIZED=0
 
-    append_skip_domain_once() {
-        grep -qxF "$TARGET" "$SKIP_DOMAIN_FILE" 2>/dev/null || echo "$TARGET" >> "$SKIP_DOMAIN_FILE"
-    }
-
     cleanup_target_state() {
-        [[ "$TARGET_FINALIZED" -eq 1 ]] && return 0
+        [[ "${TARGET_FINALIZED:-0}" -eq 1 ]] && return 0
         TARGET_FINALIZED=1
-        if [[ -n "$AI_DISCOVERY_PID" ]] && kill -0 "$AI_DISCOVERY_PID" 2>/dev/null; then
+        if [[ -n "${AI_DISCOVERY_PID:-}" ]] && kill -0 "$AI_DISCOVERY_PID" 2>/dev/null; then
             kill "$AI_DISCOVERY_PID" 2>/dev/null || true
         fi
         rm -f "$STATUS_FILE" \
@@ -111,6 +107,51 @@ process_target() {
               "$OUTPUT_BASE/.status/${TARGET_SAFE}.skip_domain"
         current_cmd_pid=""
         trap - SIGINT
+    }
+    
+    # [V4.1 AI Full Control] Orchestration Handoff
+    # Hanya aktif jika USE_V4_ENGINE=true dan AI_ORCHESTRATOR_MODE=true (Opsi 3)
+    if [[ "${USE_V4_ENGINE:-false}" == "true" && "${AI_ORCHESTRATOR_MODE:-false}" == "true" ]]; then
+        # Jika AI Full Control aktif, kita serahkan orkestrasinya ke AI Engine v4.1
+        # yang memiliki alur 6-tahap (Recon > Vuln > Exploit > Payload > Proof > Report)
+        local _job_uuid=$(date +%s%N)
+        if ai_orchestrate_pipeline "$TARGET" "$_job_uuid" "$TARGET_DIR"; then
+            cleanup_target_state
+            return 0
+        fi
+        log_msg "i" "\033[1;33m" "$TARGET" "CORE" "AI Orchestration failed or skipped. Falling back to local Shell pipeline."
+    fi
+    
+    # [V4.0 Integration] Shadow Run Fallback Hook
+    # Mengirim target ke engine V4.0 secara asinkron tanpa memblokir proses v3.3
+    if [[ "${ENABLE_V4_SHADOW:-false}" == "true" ]]; then
+        # Cek apakah engine hidup sebelum kirim
+        local _v4_api_url="${V4_API_URL:-http://localhost:8000}"
+        if curl -s --max-time 2 "$_v4_api_url/health" >/dev/null 2>&1; then
+            log_msg "i" "\033[1;36m" "$TARGET" "V4_ENGINE" "Orchestrating autonomous scan via Nexusuite v4.1 Engine"
+            
+            # Prepare payload with extended context
+            local _payload
+            _payload=$(jq -n \
+                --arg url "$TARGET" \
+                --arg mode "${AI_AGENT_MODE:-nx_advanced}" \
+                --arg speed "${SCAN_SPEED:-Normal}" \
+                --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" \
+                '{url: $url, ai_mode: $mode, scan_speed: $speed, ai_model: $model, force_enum: true}')
+            
+            curl -X POST "$_v4_api_url/api/v1/scan" \
+                 -H "Content-Type: application/json" \
+                 -H "X-API-Key: admin-secret-key" \
+                 -d "$_payload" \
+                 --max-time 5 -s -o /dev/null || true
+        else
+            log_msg "w" "\033[1;33m" "$TARGET" "V4_ENGINE" "V4 engine not reachable at $_v4_api_url. Falling back to Shell core."
+        fi
+    fi
+
+    
+    append_skip_domain_once() {
+        grep -qxF "$TARGET" "$SKIP_DOMAIN_FILE" 2>/dev/null || echo "$TARGET" >> "$SKIP_DOMAIN_FILE"
     }
 
     abort_target_scan() {
@@ -129,6 +170,12 @@ process_target() {
     start_ai_discovery_async() {
         local phase="${1:-runtime}"
         local ai_proxy_for_dork="${AI_DORK_USE_PROXY:-${AI_PROXY_FOR_INTEL:-false}}"
+        
+        # JANGAN jalankan discovery script lama jika Engine V4 aktif
+        if [[ "${USE_V4_ENGINE:-false}" == "true" ]]; then
+            return 0
+        fi
+
         if [[ "${USE_AI:-n}" != "y" && "${USE_AI:-n}" != "Y" ]]; then
             return 0
         fi
@@ -322,13 +369,7 @@ Aturan:
 EOF
 )
 
-        payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$planner_prompt" '{model:$model,prompt:$prompt,stream:false}')"
-        raw_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT:-30}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$payload" || true)"
-        echo "$raw_resp" > "$AI_PLAN_RAW"
-        
-        # Bersihkan tag <think> jika ada (dari DeepSeek R1)
-        llm_resp="$(echo "$raw_resp" | jq -r '.response // empty' 2>/dev/null || true)"
-        llm_resp="$(clean_json_response "$llm_resp")"
+        llm_resp=$(ai_query "$planner_prompt" "Kamu adalah AI Decision Engine utama untuk workflow pentest." "$AI_PLAN_FILE" "${AI_HTTP_TIMEOUT:-30}")
 
         if [[ -z "$llm_resp" ]] || ! echo "$llm_resp" | jq -e . >/dev/null 2>&1; then
             echo "Planner mode: invalid AI JSON response, fallback to default tools." >> "$summary_file"
@@ -338,8 +379,6 @@ EOF
             ACTIVE_TOOLS="$(normalize_tools_line "$ACTIVE_TOOLS")"
             return 0
         fi
-
-        echo "$llm_resp" > "$AI_PLAN_FILE"
         
         # Upgrade Logika: Tambahkan opsi 'aggressive' untuk AI
         AI_PLAN_PROFILE_PRIMARY="$(echo "$llm_resp" | jq -r '.strategy.primary // "balanced"' | tr '[:upper:]' '[:lower:]')"
@@ -489,17 +528,11 @@ Aturan:
 EOF
 )
 
-        payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$repl_prompt" '{model:$model,prompt:$prompt,stream:false}')"
-        raw_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT:-30}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$payload" || true)"
-        
-        llm_resp="$(echo "$raw_resp" | jq -r '.response // empty' 2>/dev/null || true)"
-        llm_resp="$(clean_json_response "$llm_resp")"
+        llm_resp=$(ai_query "$repl_prompt" "Kamu adalah AI Pentest Planner fase-2 (setelah recon)." "$AI_REPLAN_FILE" "${AI_HTTP_TIMEOUT:-30}")
 
         if [[ -z "$llm_resp" ]] || ! echo "$llm_resp" | jq -e . >/dev/null 2>&1; then
             return 0
         fi
-
-        echo "$llm_resp" > "$AI_REPLAN_FILE"
         local phase2_focus
         phase2_focus="$(echo "$llm_resp" | jq -r '.phase2_focus // "balanced"' | tr '[:upper:]' '[:lower:]')"
         [[ "$phase2_focus" != "web" && "$phase2_focus" != "network" && "$phase2_focus" != "balanced" ]] && phase2_focus="$AI_PLAN_PROFILE_BACKUP"
@@ -598,11 +631,8 @@ Aturan:
 - tanpa markdown/code fence
 EOF
 )
-            payload="$(jq -n --arg model "${OLLAMA_MODEL:-deepseek-r1:8b}" --arg prompt "$prompt" '{model:$model,prompt:$prompt,stream:false}')"
-            raw_resp="$(ollama_curl -fsS -m "${AI_HTTP_TIMEOUT:-30}" -X POST "${OLLAMA_GENERATE_API:-${OLLAMA_HOST%/}/api/generate}" -H "Content-Type: application/json" -d "$payload" || true)"
-            llm_resp="$(echo "$raw_resp" | jq -r '.response // empty' 2>/dev/null || true)"
+            llm_resp=$(ai_query "$prompt" "Kamu adalah Senior Pentester Planner (fase post-vulnerability)." "$graph_file" "${AI_HTTP_TIMEOUT:-30}")
             if [[ -n "$llm_resp" ]] && echo "$llm_resp" | jq -e . >/dev/null 2>&1; then
-                echo "$llm_resp" > "$graph_file"
                 generated_by="llm"
             fi
         fi
@@ -1167,9 +1197,49 @@ EOF
     gum style --foreground 212 --border double --border-foreground 39 --padding "0 2" "🔎 PHASE 1: RECONNAISSANCE" "Target: $TARGET"
     echo ""
 
-    # Subfinder hanya dieksekusi jika alat tersebut ada di SELECTED_TOOLS (sudah difilter di prompts.sh)
+    # GLOBAL CACHE & AUDIT TRAIL (PTES Standard)
+    CACHE_DIR="$SCRIPT_DIR/cache/recon"
+    mkdir -p "$CACHE_DIR"
+    AUDIT_LOG="$OUTPUT_BASE/audit.log"
+    touch "$AUDIT_LOG"
+
+    log_audit() {
+        local tool="$1"
+        local target="$2"
+        local status="$3"
+        local size="${4:-0}"
+        printf '[%s] tool=%s target=%s status=%s out_size=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$tool" "$target" "$status" "$size" >> "$AUDIT_LOG"
+    }
+
+    # Subfinder with Gate-keeper Caching
     if tool_enabled "subfinder"; then
-        run_step "Subfinder" subfinder -d "$TARGET" -silent __PROXY__ -o "$TARGET_DIR/recon/subfinder.txt" || { abort_target_scan; return 0; }
+        local sub_cache="$CACHE_DIR/subfinder_${TARGET_SAFE}.txt"
+        local skip_sub=0
+        if [[ -f "$sub_cache" && "${FORCE_ENUM:-false}" != "true" ]]; then
+            local now=$(date +%s)
+            local file_time=$(stat -c %Y "$sub_cache")
+            if (( now - file_time < 86400 )); then
+                log_msg "i" "\033[1;32m" "$TARGET" "SUBFINDER" "Cache hit (<24h). Menggunakan data lokal."
+                cp "$sub_cache" "$TARGET_DIR/recon/subfinder.txt"
+                skip_sub=1
+                log_audit "subfinder" "$TARGET" "cache_hit" "$(wc -c < "$sub_cache")"
+            fi
+        fi
+
+        if [[ "$skip_sub" -eq 0 ]]; then
+            if [[ "${FORCE_ENUM:-false}" == "true" ]]; then
+                log_msg "i" "\033[1;33m" "$TARGET" "SUBFINDER" "Bypassing cache (--force-enum aktif)."
+            fi
+            run_step "Subfinder" subfinder -d "$TARGET" -silent __PROXY__ -o "$TARGET_DIR/recon/subfinder.txt" || { abort_target_scan; return 0; }
+            cp "$TARGET_DIR/recon/subfinder.txt" "$sub_cache"
+            chmod 600 "$sub_cache"
+            log_audit "subfinder" "$TARGET" "success" "$(wc -c < "$TARGET_DIR/recon/subfinder.txt")"
+        fi
+        
+        # Evidence Integrity
+        if [[ -f "$TARGET_DIR/recon/subfinder.txt" ]]; then
+            sha256sum "$TARGET_DIR/recon/subfinder.txt" | awk '{print $1}' > "$TARGET_DIR/recon/subfinder.txt.sha256"
+        fi
     fi
 
     # WAFW00F (WAF Detector)
@@ -1232,14 +1302,32 @@ EOF
         fi
     fi
 
+    # Intelligence Gathering - Consolidated Master Hosts File
+    MASTER_HOSTS="$TARGET_DIR/recon/hosts_master.txt"
+    : > "$MASTER_HOSTS"
+    [[ -f "$TARGET_DIR/recon/subfinder.txt" ]] && cat "$TARGET_DIR/recon/subfinder.txt" >> "$MASTER_HOSTS"
+    # Tambahkan tool lain jika ada (amass, assetfinder)
+    sort -u "$MASTER_HOSTS" -o "$MASTER_HOSTS"
+
     if [[ "$FULL_AUTO_MODE" != "true" ]] && tool_enabled "httpx"; then
-        if [[ -s "$TARGET_DIR/recon/subfinder.txt" ]]; then
-            HOSTS_FILE="$TARGET_DIR/recon/subfinder.txt"
+        if [[ -s "$MASTER_HOSTS" ]]; then
+            HOSTS_FILE="$MASTER_HOSTS"
         else
             echo "$TARGET" > "$TARGET_DIR/recon/temp_host.txt"
             HOSTS_FILE="$TARGET_DIR/recon/temp_host.txt"
         fi
-        run_step "httpx" httpx -l "$HOSTS_FILE" -silent -td -title -status-code -ip __PROXY__ -o "$TARGET_DIR/recon/alive.txt" || { abort_target_scan; return 0; }
+        run_step "httpx" httpx -l "$HOSTS_FILE" -silent -td -title -status-code -ip __PROXY__ -o "$TARGET_DIR/recon/alive_raw.txt" || { abort_target_scan; return 0; }
+        log_audit "httpx" "$TARGET" "success" "$(wc -c < "$TARGET_DIR/recon/alive_raw.txt")"
+        
+        # Deduplikasi: Prioritaskan HTTPS dan buang HTTP jika domain yang sama sudah ada
+        if [[ -s "$TARGET_DIR/recon/alive_raw.txt" ]]; then
+            sort -r "$TARGET_DIR/recon/alive_raw.txt" | awk '{
+                raw=$0;
+                u=$1;
+                sub(/^https?:\/\//, "", u);
+                if (!seen[u]++) print raw;
+            }' > "$TARGET_DIR/recon/alive.txt"
+        fi
     else
         echo "$TARGET" > "$TARGET_DIR/recon/alive.txt"
     fi
@@ -1247,15 +1335,23 @@ EOF
 
     # MODIFIKASI: Tool pendeteksi CMS (WhatWeb) dan Wpscan
     if tool_enabled "whatweb" && [[ -s "$TARGET_DIR/recon/alive.txt" ]]; then
+        log_msg "i" "\033[1;36m" "$TARGET" "WhatWeb" "Menganalisis fingerprint teknologi..."
         while IFS= read -r host; do
             [[ "$host" =~ ^https?:// ]] || continue
-            run_step "WhatWeb ($host)" whatweb "$host" --color=NEVER -a 3 --log-brief="$TARGET_DIR/recon/whatweb.txt" || { abort_target_scan; return 0; }
+            # Gunakan append (>>) agar tidak overwrite jika ada banyak vhost/subdomain
+            run_step "WhatWeb ($host)" bash -c "whatweb '$host' --color=NEVER -a 3 | tee -a '$TARGET_DIR/recon/whatweb.txt'" || true
         done < "$TARGET_DIR/recon/alive.txt"
 
-        if [[ -s "$TARGET_DIR/recon/whatweb.txt" && "$AI_PLANNER_ENABLED" -eq 1 ]]; then
-            log_msg "AI" "\033[1;35m" "$TARGET" "CMS_ANALYST" "Menganalisa CMS, versi, dan mencari exploit di SearchSploit..."
-            local whatweb_content
-            whatweb_content=$(cat "$TARGET_DIR/recon/whatweb.txt")
+        if [[ -s "$TARGET_DIR/recon/whatweb.txt" ]]; then
+            # Fallback detection tanpa AI (Grep sederhana)
+            if grep -qi "WordPress" "$TARGET_DIR/recon/whatweb.txt"; then
+                echo "wordpress" > "$TARGET_DIR/recon/is_wordpress.txt"
+            fi
+
+            if [[ "$AI_PLANNER_ENABLED" -eq 1 ]]; then
+                log_msg "AI" "\033[1;35m" "$TARGET" "CMS_ANALYST" "Menganalisa CMS detail via AI..."
+                local whatweb_content
+                whatweb_content=$(cat "$TARGET_DIR/recon/whatweb.txt" | head -c 4000)
             
             local cms_prompt
             cms_prompt=$(cat <<EOF
@@ -1324,11 +1420,24 @@ EOF
             fi
         fi
     fi
+fi
 
     if tool_enabled "wpscan" && [[ -f "$TARGET_DIR/recon/is_wordpress.txt" ]]; then
+        log_msg "i" "\033[1;36m" "$TARGET" "WPScan" "Menjalankan pemindaian WordPress..."
         while IFS= read -r host; do
             [[ "$host" =~ ^https?:// ]] || continue
-            run_step "WPScan ($host)" wpscan --url "$host" --no-update --disable-tls-checks -o "$TARGET_DIR/scans/wpscan.txt" || { abort_target_scan; return 0; }
+            # Cek apakah host ini memang wordpress (WhatWeb per host)
+            if whatweb "$host" --color=NEVER | grep -qi "WordPress"; then
+                local safe_host=$(echo "$host" | sed 's/[^a-zA-Z0-9]/_/g')
+                local wpscan_args="--url $host --no-update --disable-tls-checks --enumerate p,t,u"
+                
+                # Tambahkan API Token jika tersedia di env
+                if [[ -n "${WPSCAN_API_TOKEN:-}" ]]; then
+                    wpscan_args="$wpscan_args --api-token $WPSCAN_API_TOKEN"
+                fi
+
+                run_step "WPScan ($host)" wpscan $wpscan_args -o "$TARGET_DIR/scans/wpscan_${safe_host}.txt" || true
+            fi
         done < "$TARGET_DIR/recon/alive.txt"
     fi
 
@@ -1368,7 +1477,12 @@ EOF
         run_step "Probe URLs (filter 200)" httpx -l "$TARGET_DIR/recon/all_urls_raw.txt" -silent -status-code -mc 200 __PROXY__ -o "$TARGET_DIR/recon/all_urls_200.txt" || { abort_target_scan; return 0; }
         if [[ -s "$TARGET_DIR/recon/all_urls_200.txt" ]]; then
             # Hanya simpan URL tanpa status code (jika httpx menambahkannya)
-            sed -E 's/\s+\[[0-9]+\]$//' "$TARGET_DIR/recon/all_urls_200.txt" > "$TARGET_DIR/recon/all_urls.txt"
+            sed -E 's/\s+\[[0-9]+\]$//' "$TARGET_DIR/recon/all_urls_200.txt" | sort -r | awk '{
+                raw=$0;
+                u=$1;
+                sub(/^https?:\/\//, "", u);
+                if (!seen[u]++) print raw;
+            }' > "$TARGET_DIR/recon/all_urls.txt"
             log_msg "i" "\033[1;36m" "$TARGET" "Filter" "$(wc -l < "$TARGET_DIR/recon/all_urls.txt") URLs with status 200 retained."
             
             # FITUR BARU: AI JS Endpoint Extractor
@@ -1481,23 +1595,54 @@ EOF
 
     # Menambahkan FFUF untuk Directory & File Discovery
     if tool_enabled "ffuf" && [[ -s "$TARGET_DIR/recon/alive.txt" ]]; then
-        # Menggunakan file dictionary ringan yang umum dipakai (jika belum ada, download otomatis)
-        local wordlist="$HOME/tools/wordlists/common.txt"
-        if [[ ! -f "$wordlist" ]]; then
+        local wordlist=""
+        local possible_wordlists=(
+            "$HOME/tools/wordlists/common.txt"
+            "/usr/share/wordlists/dirb/common.txt"
+            "/usr/share/dirb/wordlists/common.txt"
+            "/usr/share/seclists/Discovery/Web-Content/common.txt"
+        )
+        
+        for wl in "${possible_wordlists[@]}"; do
+            if [[ -f "$wl" ]]; then
+                wordlist="$wl"
+                break
+            fi
+        done
+
+        if [[ -z "$wordlist" ]]; then
             mkdir -p "$HOME/tools/wordlists"
-            curl -sL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt" -o "$wordlist" > /dev/null 2>&1 || true
+            wordlist="$HOME/tools/wordlists/common.txt"
+            log_msg "i" "\033[1;36m" "$TARGET" "FFUF" "Downloading common wordlist..."
+            curl -sL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt" -o "$wordlist" || true
         fi
         
         if [[ -f "$wordlist" ]]; then
             IFS=' ' read -ra ffuf_rl_arr <<< "$FFUF_RL"
             while IFS= read -r host; do
                 [[ "$host" =~ ^https?:// ]] || continue
-                safe_host=$(echo "$host" | md5sum | cut -d' ' -f1)
-                # Mencari status 200, 301 untuk endpoint rahasia/admin
-                run_step "FFUF ($host)" ffuf -u "$host/FUZZ" -w "$wordlist" "${ffuf_rl_arr[@]}" -mc 200,204,301,302,307,401 -s __PROXY__ -o "$TARGET_DIR/recon/ffuf_${safe_host}.json" || { abort_target_scan; return 0; }
+                
+                # Deteksi teknologi untuk ekstensi file
+                local ext=""
+                if [[ -f "$TARGET_DIR/recon/whatweb.txt" ]]; then
+                    if grep -qi "PHP" "$TARGET_DIR/recon/whatweb.txt"; then ext="-e .php,.txt,.html"; fi
+                    if grep -qi "ASP.NET" "$TARGET_DIR/recon/whatweb.txt"; then ext="-e .aspx,.asp,.config"; fi
+                    if grep -qi "JSP" "$TARGET_DIR/recon/whatweb.txt"; then ext="-e .jsp,.do"; fi
+                fi
+
+                local safe_host=$(echo "$host" | sed 's/[^a-zA-Z0-9]/_/g')
+                log_msg "i" "\033[1;36m" "$TARGET" "FFUF" "Fuzzing $host with extensions: ${ext:-none}"
+                
+                # Tambahkan parameter kustom: -recursion -recursion-depth 1 jika mode aggressive
+                local extra_args=""
+                if [[ "${AI_AGGRESSIVE_MODE:-false}" == "true" ]]; then
+                    extra_args="-recursion -recursion-depth 1"
+                fi
+
+                run_step "FFUF ($host)" ffuf -u "$host/FUZZ" -w "$wordlist" "${ffuf_rl_arr[@]}" $ext $extra_args -mc 200,204,301,302,307,401 -s __PROXY__ -o "$TARGET_DIR/recon/ffuf_${safe_host}.json" || true
             done < "$TARGET_DIR/recon/alive.txt"
         else
-            log_msg "!" "\033[1;31m" "$TARGET" "FFUF" "Wordlist not found. Skipping FFUF."
+            log_msg "!" "\033[1;31m" "$TARGET" "FFUF" "Wordlist not found and download failed. Skipping FFUF."
         fi
     fi
 
@@ -1725,6 +1870,17 @@ EOF
 
     # Planner fase-3: setelah vulnerability scan, AI menyusun attack graph prioritas.
     build_ai_attack_graph
+
+    # ========== PHASE 2.5: EXPOSURE VALIDATION (PTES Standard) ==========
+    if [[ -s "$TARGET_DIR/recon/alive.txt" ]]; then
+        log_msg "i" "\033[1;35m" "$TARGET" "VALIDATION" "Melakukan validasi exposure pada subdomain yang ditemukan..."
+        run_step "Nuclei Exposure" nuclei -l "$TARGET_DIR/recon/alive.txt" -tags exposure -silent __PROXY__ -o "$TARGET_DIR/vulnerabilities/exposure_validation.txt" || true
+        
+        if [[ -f "$TARGET_DIR/vulnerabilities/exposure_validation.txt" ]]; then
+            sha256sum "$TARGET_DIR/vulnerabilities/exposure_validation.txt" | awk '{print $1}' > "$TARGET_DIR/vulnerabilities/exposure_validation.txt.sha256"
+            log_audit "nuclei_exposure" "$TARGET" "success" "$(wc -c < "$TARGET_DIR/vulnerabilities/exposure_validation.txt")"
+        fi
+    fi
 
     # ========== PHASE 3: FINAL (NIKTO) ==========
     if tool_enabled "nikto" && [[ -s "$TARGET_DIR/recon/alive.txt" ]]; then

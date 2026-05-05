@@ -1,0 +1,6 @@
+name: arjun
+tier: medium
+timeout_sec: 480
+command_template: arjun -u {target} -t 10 --passive -oJ {output_file}
+description: HTTP parameter discovery
+risk: medium

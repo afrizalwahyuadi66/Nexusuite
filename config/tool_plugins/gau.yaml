@@ -1,0 +1,6 @@
+name: gau
+tier: low
+timeout_sec: 300
+command_template: gau {target} --subs --blacklist png,jpg,jpeg,gif,svg,woff,ttf,css
+description: Fetch historical URLs from Wayback Machine, etc.
+risk: low

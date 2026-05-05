@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexusuite Evolution v4.0 | AI-First Offensive Platform</title>
+    
+    <!-- Professional Assets -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    
+    <!-- Core Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-black text-light theme-v4">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar border-end border-secondary">
+        <div class="sidebar-header p-4">
+            <div class="brand d-flex align-items-center">
+                <div class="brand-icon me-3">
+                    <i class="bi bi-shield-slash-fill text-danger fs-3"></i>
+                </div>
+                <div>
+                    <h5 class="mb-0 fw-bold tracking-tight">NEXUSUITE</h5>
+                    <span class="badge bg-danger-soft text-danger x-small">EVOLUTION v4.0</span>
+                </div>
+            </div>
+        </div>
+        
+        <nav class="sidebar-nav px-3">
+            <div class="nav-label small text-secondary text-uppercase fw-bold mb-3 px-3">Main Console</div>
+            <a href="#" class="nav-link active rounded-3 mb-2">
+                <i class="bi bi-grid-1x2-fill me-3"></i> Unified Dashboard
+            </a>
+            <a href="#activities" class="nav-link rounded-3 mb-2">
+                <i class="bi bi-cpu-fill me-3"></i> AI Intelligence
+            </a>
+            <a href="#jobs" class="nav-link rounded-3 mb-2">
+                <i class="bi bi-terminal-fill me-3"></i> Scan Operations
+            </a>
+            
+            <div class="nav-label small text-secondary text-uppercase fw-bold mt-4 mb-3 px-3">Data & Analytics</div>
+            <a href="#reports" class="nav-link rounded-3 mb-2">
+                <i class="bi bi-bar-chart-steps me-3"></i> Executive Reports
+            </a>
+            <a href="/api/v1/export?format=json" class="nav-link rounded-3 mb-2">
+                <i class="bi bi-database-fill-down me-3"></i> Raw Data Export
+            </a>
+        </nav>
+
+        <div class="sidebar-footer p-4 mt-auto">
+            <button class="btn btn-danger w-100 fw-bold shadow-lg py-2" data-bs-toggle="modal" data-bs-target="#scanModal">
+                <i class="bi bi-plus-lg me-2"></i> NEW MISSION
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+        <!-- Top Header Bar -->
+        <header class="top-bar d-flex align-items-center justify-content-between px-4 border-bottom border-secondary sticky-top bg-black-transparent backdrop-blur">
+            <div class="d-flex align-items-center">
+                <button class="btn btn-link text-light d-lg-none me-3 p-0" id="sidebarToggle">
+                    <i class="bi bi-list fs-3"></i>
+                </button>
+                <div class="page-title">
+                    <h4 class="mb-0 fw-bold">Command Center</h4>
+                    <p class="text-secondary x-small mb-0">Monitoring autonomous offensive operations in real-time.</p>
+                </div>
+            </div>
+            
+            <div class="d-flex align-items-center gap-3">
+                <div class="system-status d-flex align-items-center px-3 py-1 bg-dark rounded-pill border border-secondary">
+                    <span class="status-indicator online me-2"></span>
+                    <span class="small fw-medium">Engine v4.1 Online</span>
+                </div>
+                <div class="user-profile">
+                    <div class="avatar-circle">AD</div>
+                </div>
+            </div>
+        </header>
+
+        <div class="container-fluid p-4">
+            <!-- KPI Summary Cards -->
+            <div class="row g-4 mb-4">
+                <div class="col-xl-3 col-sm-6">
+                    <div class="kpi-card bg-glass p-4 rounded-4 border border-secondary shadow-sm">
+                        <div class="d-flex justify-content-between mb-3">
+                            <div class="kpi-icon bg-primary-soft text-primary"><i class="bi bi-search"></i></div>
+                            <span class="badge bg-success-soft text-success">+12% <i class="bi bi-graph-up"></i></span>
+                        </div>
+                        <h3 class="fw-extrabold mb-1" id="stat-total-scans">0</h3>
+                        <p class="text-secondary small fw-medium mb-0">Total Targets Scanned</p>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-sm-6">
+                    <div class="kpi-card bg-glass p-4 rounded-4 border border-secondary shadow-sm">
+                        <div class="d-flex justify-content-between mb-3">
+                            <div class="kpi-icon bg-danger-soft text-danger"><i class="bi bi-bug-fill"></i></div>
+                            <span class="badge bg-danger-soft text-danger">CRITICAL</span>
+                        </div>
+                        <h3 class="fw-extrabold mb-1 text-danger" id="stat-total-findings">0</h3>
+                        <p class="text-secondary small fw-medium mb-0">Verified Vulnerabilities</p>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-sm-6">
+                    <div class="kpi-card bg-glass p-4 rounded-4 border border-secondary shadow-sm">
+                        <div class="d-flex justify-content-between mb-3">
+                            <div class="kpi-icon bg-success-soft text-success"><i class="bi bi-check-all"></i></div>
+                            <div class="small text-secondary" id="stat-success-rate">0%</div>
+                        </div>
+                        <h3 class="fw-extrabold mb-2">Accuracy</h3>
+                        <div class="progress bg-dark" style="height: 6px;">
+                            <div class="progress-bar bg-success" id="stat-success-progress" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-sm-6">
+                    <div class="kpi-card bg-glass p-4 rounded-4 border border-secondary shadow-sm">
+                        <div class="d-flex justify-content-between mb-3">
+                            <div class="kpi-icon bg-info-soft text-info"><i class="bi bi-lightning-charge-fill"></i></div>
+                            <span class="text-info x-small fw-bold">AI LATENCY</span>
+                        </div>
+                        <h3 class="fw-extrabold mb-1 text-info" id="stat-avg-response">0ms</h3>
+                        <p class="text-secondary small fw-medium mb-0">Avg Decision Time</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <!-- Left Column: Operations -->
+                <div class="col-lg-8">
+                    <!-- Analytics Chart -->
+                    <div class="card bg-glass border-secondary rounded-4 mb-4 overflow-hidden">
+                        <div class="card-header bg-transparent border-secondary p-4 d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0 fw-bold">Neural Engine Activity</h5>
+                            <div class="chart-legend d-flex gap-3">
+                                <span class="small text-secondary"><i class="bi bi-circle-fill text-info me-1"></i> AI Request Volume</span>
+                            </div>
+                        </div>
+                        <div class="card-body p-4">
+                            <canvas id="activityChart" height="300"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Intelligence Global Vault (New) -->
+                    <section id="global-findings" class="mb-4">
+                        <div class="section-header d-flex justify-content-between align-items-center mb-3 px-2">
+                            <h5 class="mb-0 fw-extrabold text-danger"><i class="bi bi-shield-lock-fill me-2"></i> Intelligence Global Vault</h5>
+                            <span class="badge bg-danger-soft text-danger fw-bold" id="vault-count">0 VERIFIED VULNS</span>
+                        </div>
+                        <div class="card bg-glass border-danger border-opacity-25 rounded-4 shadow-lg overflow-hidden">
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-hover align-middle mb-0" id="globalVaultTable">
+                                        <thead class="bg-black-soft border-bottom border-secondary">
+                                            <tr>
+                                                <th class="px-4 py-3 fw-bold small text-secondary">VULNERABILITY</th>
+                                                <th class="py-3 fw-bold small text-secondary">TARGET ENTITY</th>
+                                                <th class="py-3 fw-bold small text-secondary">SEVERITY</th>
+                                                <th class="py-3 fw-bold small text-secondary">CONFIDENCE</th>
+                                                <th class="px-4 py-3 fw-bold small text-secondary text-end">ACTIONS</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="globalVaultBody">
+                                            <!-- Universal findings from all jobs will be injected here -->
+                                            <tr>
+                                                <td colspan="5" class="text-center py-5 text-secondary opacity-50">
+                                                    <i class="bi bi-safe2 fs-1 mb-2 d-block"></i>
+                                                    <p>Global Vault is empty. No universal findings detected across missions.</p>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Strategic AI Cards -->
+                    <section id="activities" class="mb-4">
+                        <div class="section-header d-flex justify-content-between align-items-center mb-3 px-2">
+                            <h5 class="mb-0 fw-extrabold"><i class="bi bi-cpu text-info me-2"></i> Strategic AI Logic</h5>
+                            <div class="filters d-flex gap-2">
+                                <select id="filter-importance" class="form-select form-select-sm bg-dark border-secondary text-light">
+                                    <option value="all">Priority: All</option>
+                                    <option value="high">Priority: Critical</option>
+                                    <option value="medium">Priority: Medium</option>
+                                </select>
+                                <div class="input-group input-group-sm border border-secondary rounded-2">
+                                    <span class="input-group-text bg-dark border-0 text-secondary"><i class="bi bi-search"></i></span>
+                                    <input type="text" id="aiSearch" class="form-control bg-dark border-0 text-light" placeholder="Search logic...">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row g-3" id="ai-activity-cards">
+                            <!-- Skeleton Placeholders -->
+                            <div class="col-md-6 col-lg-3"><div class="skeleton-card rounded-4 h-100"></div></div>
+                            <div class="col-md-6 col-lg-3"><div class="skeleton-card rounded-4 h-100"></div></div>
+                            <div class="col-md-6 col-lg-3"><div class="skeleton-card rounded-4 h-100"></div></div>
+                            <div class="col-md-6 col-lg-3"><div class="skeleton-card rounded-4 h-100"></div></div>
+                        </div>
+                    </section>
+
+                    <!-- Tool Explorer (Dynamic Output) -->
+                    <div class="card bg-glass border-secondary rounded-4 mb-4 shadow-lg">
+                        <div class="card-header bg-transparent border-secondary p-4 d-flex justify-content-between align-items-center">
+                            <ul class="nav nav-pills card-header-pills" id="explorerTabs" role="tablist">
+                                <li class="nav-item">
+                                    <button class="nav-link active py-1 px-3 small fw-bold" id="findings-tab" data-bs-toggle="pill" data-bs-target="#tab-findings">VERIFIED FINDINGS</button>
+                                </li>
+                                <li class="nav-item">
+                                    <button class="nav-link py-1 px-3 small fw-bold" id="logs-tab" data-bs-toggle="pill" data-bs-target="#tab-logs">RAW TOOL LOGS</button>
+                                </li>
+                            </ul>
+                            <div class="btn-group btn-group-sm border border-secondary rounded-pill p-1">
+                                <button class="btn btn-dark rounded-pill border-0" id="btn-sort-tool-time"><i class="bi bi-clock-history"></i></button>
+                                <button class="btn btn-dark rounded-pill border-0" id="btn-expand-all"><i class="bi bi-arrows-angle-expand"></i></button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="tab-content">
+                                <!-- Verified Findings Tab -->
+                                <div class="tab-pane fade show active p-4" id="tab-findings">
+                                    <div id="findingsGallery" class="row g-3">
+                                        <div class="col-12 text-center py-5 text-secondary opacity-50">
+                                            <i class="bi bi-shield-check fs-1 mb-2 d-block"></i>
+                                            <p>No verified vulnerabilities reported yet.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Raw Logs Tab -->
+                                <div class="tab-pane fade" id="tab-logs">
+                                    <div class="accordion accordion-flush" id="toolOutputAccordion">
+                                        <div class="empty-state p-5 text-center">
+                                            <div class="empty-icon text-secondary opacity-25 mb-3">
+                                                <i class="bi bi-folder2-open display-1"></i>
+                                            </div>
+                                            <h6 class="text-secondary fw-medium">No Operations Selected</h6>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Operation Table -->
+                    <div id="jobs" class="card bg-glass border-secondary rounded-4 shadow-sm">
+                        <div class="card-header bg-transparent border-secondary p-4 d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0 fw-bold">Active & Past Missions</h5>
+                            <div class="search-box input-group input-group-sm w-auto">
+                                <input type="text" id="jobSearch" class="form-control bg-dark border-secondary text-light" placeholder="Search mission...">
+                                <span class="input-group-text bg-dark border-secondary"><i class="bi bi-filter"></i></span>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive" style="max-height: 500px;">
+                                <table class="table table-dark table-hover mb-0 align-middle" id="jobsTable">
+                                    <thead class="bg-black-soft border-bottom border-secondary">
+                                        <tr>
+                                            <th class="px-4 py-3 fw-bold small text-secondary">TARGET ENTITY</th>
+                                            <th class="py-3 fw-bold small text-secondary">STATUS</th>
+                                            <th class="py-3 fw-bold small text-secondary text-center">FINDINGS</th>
+                                            <th class="py-3 fw-bold small text-secondary">START TIME</th>
+                                            <th class="px-4 py-3 fw-bold small text-secondary text-end">ACTIONS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Scans injected here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-transparent border-0 text-center py-3">
+                            <button id="btn-load-more-jobs" class="btn btn-sm btn-link text-secondary text-decoration-none fw-bold">
+                                VIEW HISTORICAL ARCHIVE <i class="bi bi-chevron-down ms-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: AI Live Feed & Intelligence -->
+                <div class="col-lg-4">
+                    <!-- Intelligence Mix (Simplified AI Summary) -->
+                    <div id="reports" class="card bg-glass border-secondary rounded-4 mb-4 shadow-sm">
+                        <div class="card-header bg-transparent border-secondary p-4">
+                            <h5 class="mb-0 fw-bold">Intelligence Mix</h5>
+                            <p class="text-secondary x-small mb-0">Summary of recent AI decision outcomes.</p>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-dark table-sm mb-0 x-small" id="intelMixTable">
+                                    <thead class="bg-black-soft">
+                                        <tr>
+                                            <th class="ps-4">ACTION</th>
+                                            <th>OUTCOME</th>
+                                            <th class="text-end pe-4">TIME</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Static AI summary will be injected here (limited to 5) -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <div class="p-4 border-top border-secondary">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-secondary">Total Reasoning Loop</span>
+                                    <span class="fw-bold" id="report-total-requests">0</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-secondary">Model Precision</span>
+                                    <span class="fw-bold text-success">98.4%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Interaction Stream -->
+                    <div class="card bg-glass border-secondary rounded-4 h-100 d-flex flex-column shadow-lg overflow-hidden" style="max-height: 900px;">
+                        <div class="card-header bg-transparent border-secondary p-4 d-flex align-items-center justify-content-between">
+                            <h5 class="mb-0 fw-bold"><i class="bi bi-activity text-danger me-2"></i> Live Neural Stream</h5>
+                            <span class="badge bg-danger pulse">LIVE</span>
+                        </div>
+                        <div class="card-body overflow-auto flex-grow-1 p-3" id="ai-feed">
+                            <!-- Live feed items -->
+                            <div class="text-center py-5 text-secondary opacity-50">
+                                <i class="bi bi-reception-1 fs-1 mb-3 d-block"></i>
+                                <p class="x-small">Establishing link to AI Core...</p>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-black-soft border-top border-secondary p-3 text-center">
+                            <button id="btn-load-more-activities" class="btn btn-sm btn-outline-secondary w-100 border-0 fw-bold">
+                                SYNC OLDER LOGS <i class="bi bi-arrow-repeat ms-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Unified Modals System -->
+    
+    <!-- New Mission Modal -->
+    <div class="modal fade blur-modal" id="scanModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-glass-dark border-secondary rounded-4 shadow-2xl">
+                <div class="modal-header border-secondary p-4">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-shield-plus text-danger me-2"></i> Initiate Offensive Mission</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <form id="scanForm">
+                        <div class="mb-4">
+                            <label class="form-label small fw-bold text-secondary text-uppercase">Target Identity (Domain/URL)</label>
+                            <input type="text" class="form-control bg-dark border-secondary text-light p-3" id="target-url" placeholder="e.g. target-entity.com" required>
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label small fw-bold text-secondary text-uppercase">AI Engagement Protocol</label>
+                            <div class="row g-2 mb-2">
+                                <div class="col-4">
+                                    <input type="radio" class="btn-check" name="ai_mode" id="mode-true-ai" value="true_ai" checked>
+                                    <label class="btn btn-outline-secondary w-100 p-2" for="mode-true-ai">
+                                        <i class="bi bi-brain d-block fs-5 mb-1"></i>
+                                        <span class="x-small fw-bold">TRUE AI</span>
+                                    </label>
+                                </div>
+                                <div class="col-4">
+                                    <input type="radio" class="btn-check" name="ai_mode" id="mode-hybrid" value="hybrid">
+                                    <label class="btn btn-outline-secondary w-100 p-2" for="mode-hybrid">
+                                        <i class="bi bi-lightning d-block fs-5 mb-1"></i>
+                                        <span class="x-small fw-bold">HYBRID</span>
+                                    </label>
+                                </div>
+                                <div class="col-4">
+                                    <input type="radio" class="btn-check" name="ai_mode" id="mode-rag" value="rag_based">
+                                    <label class="btn btn-outline-secondary w-100 p-2" for="mode-rag">
+                                        <i class="bi bi-database-fill-gear d-block fs-5 mb-1"></i>
+                                        <span class="x-small fw-bold">RAG</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <input type="radio" class="btn-check" name="ai_mode" id="mode-v4" value="v4_engine">
+                                    <label class="btn btn-outline-secondary w-100 p-2" for="mode-v4">
+                                        <i class="bi bi-rocket-takeoff d-block fs-5 mb-1"></i>
+                                        <span class="x-small fw-bold">V4 ENGINE</span>
+                                    </label>
+                                </div>
+                                <div class="col-6">
+                                    <input type="radio" class="btn-check" name="ai_mode" id="mode-tools" value="tools_only">
+                                    <label class="btn btn-outline-secondary w-100 p-2" for="mode-tools">
+                                        <i class="bi bi-tools d-block fs-5 mb-1"></i>
+                                        <span class="x-small fw-bold">TOOLS ONLY</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label small fw-bold text-secondary text-uppercase">Neural Model (Ollama)</label>
+                            <select class="form-select bg-dark border-secondary text-light p-3" id="ai-model">
+                                <option value="">Loading models...</option>
+                            </select>
+                        </div>
+                        <div class="p-3 bg-danger-soft border border-danger-soft rounded-3">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="force-enum">
+                                <label class="form-check-label small fw-bold text-danger" for="force-enum">ENABLE BRUTE-FORCE ENUMERATION</label>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-secondary p-4">
+                    <button type="button" class="btn btn-link text-secondary text-decoration-none fw-bold me-auto" data-bs-dismiss="modal">ABORT</button>
+                    <button type="button" class="btn btn-danger px-5 fw-bold shadow-lg" id="btn-start-scan">ENGAGE TARGET</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Intelligence Modal (Transparency) -->
+    <div class="modal fade blur-modal" id="aiModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content bg-glass-dark border-secondary rounded-4 shadow-2xl">
+                <div class="modal-header border-secondary p-4">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-cpu-fill text-info me-2"></i> AI Cognitive Trace</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="trace-section mb-4">
+                        <label class="x-small text-secondary fw-bold text-uppercase mb-2 d-block tracking-widest">Neural Input Prompt</label>
+                        <pre class="bg-black border border-secondary rounded-3 p-3 font-monospace x-small text-light" id="ai-modal-prompt"></pre>
+                    </div>
+                    
+                    <div class="trace-section mb-4">
+                        <label class="x-small text-secondary fw-bold text-uppercase mb-2 d-block tracking-widest">Active Reasoning Process</label>
+                        <div class="reasoning-flow p-3 bg-dark-soft border border-secondary rounded-3 border-dashed">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="spinner-grow spinner-grow-sm text-info me-2"></div>
+                                <span class="small text-info fw-bold">Synthesizing Attack Vectors...</span>
+                            </div>
+                            <div class="small text-secondary" id="ai-modal-thinking">Analyzing endpoint parameters and matching with known CVE patterns...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="trace-section">
+                        <label class="x-small text-secondary fw-bold text-uppercase mb-2 d-block tracking-widest">Synthesized Output / Payload</label>
+                        <div class="bg-black-soft border border-info border-opacity-25 rounded-3 p-4">
+                            <code class="text-info x-small d-block" id="ai-modal-output" style="white-space: pre-wrap;"></code>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary bg-black-soft p-4">
+                    <div class="me-auto">
+                        <span class="x-small text-secondary">ENGINE: <strong id="ai-modal-model" class="text-light">DeepSeek-R1</strong></span>
+                        <span class="mx-2 text-secondary">|</span>
+                        <span class="x-small text-secondary">COMPUTE: <strong id="ai-modal-duration" class="text-info">0ms</strong></span>
+                    </div>
+                    <button type="button" class="btn btn-secondary px-4 rounded-pill fw-bold" data-bs-dismiss="modal">DISMISS</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core Logic Assets -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

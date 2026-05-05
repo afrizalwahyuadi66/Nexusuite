@@ -1,4 +1,6 @@
 name: sqlmap
 tier: high
 timeout_sec: 2400
-command_template: sqlmap -u {target} --batch --smart --dbs --output-dir=platform_runs/sqlmap --flush-session
+command_template: sqlmap -u "{target}" --batch --random-agent --level 3 --risk 2 --threads 5 --technique=BEUSTQ --dbs
+description: Automatic SQL injection and database takeover tool.
+risk: high

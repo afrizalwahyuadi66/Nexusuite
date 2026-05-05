@@ -1,0 +1,6 @@
+name: wafw00f
+tier: low
+timeout_sec: 120
+command_template: wafw00f {target} -a
+description: WAF Fingerprinting
+risk: low

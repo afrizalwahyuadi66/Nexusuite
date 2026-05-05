@@ -1,0 +1,6 @@
+name: dig
+tier: low
+timeout_sec: 60
+command_template: dig {target} ANY +short
+description: DNS record lookup
+risk: low

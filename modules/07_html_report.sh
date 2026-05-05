@@ -128,8 +128,15 @@ echo "<p>Generated on: $(date)</p>" >> "$HTML_FILE"
 echo "</div><div class=\"container\">" >> "$HTML_FILE"
 
 # Stats Summary
-TOTAL_SUBS=$(wc -l < "$OUTPUT_BASE/all_subdomains.txt" 2>/dev/null || echo "0")
-TOTAL_ALIVE=$(wc -l < "$OUTPUT_BASE/alive_hosts.txt" 2>/dev/null || echo "0")
+TOTAL_SUBS="0"
+if [[ -f "$OUTPUT_BASE/all_subdomains.txt" ]]; then
+    TOTAL_SUBS=$(wc -l < "$OUTPUT_BASE/all_subdomains.txt" 2>/dev/null || echo "0")
+fi
+
+TOTAL_ALIVE="0"
+if [[ -f "$OUTPUT_BASE/alive_hosts.txt" ]]; then
+    TOTAL_ALIVE=$(wc -l < "$OUTPUT_BASE/alive_hosts.txt" 2>/dev/null || echo "0")
+fi
 TOTAL_SQLI=$(grep -c "---" "$REPORT_DIR/sqlmap_vulns.txt" 2>/dev/null || echo 0)
 TOTAL_XSS=$(grep -c "---" "$REPORT_DIR/xss_vulns.txt" 2>/dev/null || echo 0)
 TOTAL_AI=$(grep -c "^---" "$REPORT_DIR/ai_recommendations.txt" 2>/dev/null || echo 0)

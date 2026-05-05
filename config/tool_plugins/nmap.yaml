@@ -1,4 +1,6 @@
 name: nmap
 tier: medium
 timeout_sec: 1500
-command_template: nmap -sV -T3 {target} -oN {output}
+command_template: nmap -sV -sC -T4 --script=vuln --open {target} -oX {output_file}
+description: The industry standard for network discovery and security auditing.
+risk: medium

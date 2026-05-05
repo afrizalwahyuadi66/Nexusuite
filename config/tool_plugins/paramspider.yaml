@@ -1,0 +1,6 @@
+name: paramspider
+tier: low
+timeout_sec: 180
+command_template: paramspider -d {target} --level high --silent -o {output}
+description: Mining parameters from dark corners of Web Archives.
+risk: low

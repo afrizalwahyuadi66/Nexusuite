@@ -1,0 +1,6 @@
+name: katana
+tier: low
+timeout_sec: 300
+command_template: katana -u {target} -silent -jc -kf -d 3 -fs rdn -o {output}
+description: Next-generation crawling and spidering framework.
+risk: low

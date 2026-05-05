@@ -1,0 +1,6 @@
+name: amass
+tier: low
+timeout_sec: 600
+command_template: amass enum -passive -d {target} -silent
+description: In-depth subdomain discovery
+risk: low

@@ -28,7 +28,16 @@ for ((i=0; i<total; i++)); do
     log_msg "+" "\033[1;34m" "$target" "INIT" "Assigned to Batch $BATCH_NUM"
     echo "  - $target (Batch $BATCH_NUM)" >> "$BATCH_SUMMARY"
 
-    process_target "$target" &
+    if [[ "${USE_V4_ENGINE:-false}" == "true" ]]; then
+        # Use V4 Engine CLI Client
+        if [[ $total -eq 1 ]]; then
+            python3 "$SCRIPT_DIR/nx_platform/v4/core/cli.py" --start "$target"
+        else
+            python3 "$SCRIPT_DIR/nx_platform/v4/core/cli.py" --start "$target" &
+        fi
+    else
+        process_target "$target" &
+    fi
 
     # Rolling Queue: wait if active background jobs reach CONCURRENCY limit
     while [[ $(jobs -r -p | wc -l) -ge $CONCURRENCY ]]; do
@@ -40,6 +49,14 @@ done
 
 # Wait for remaining background processes
 echo ""
+if [[ "${USE_V4_ENGINE:-false}" == "true" ]]; then
+    echo -e "${YELLOW}[?] Tekan 'd' untuk membuka V4 Real-time Dashboard, atau tombol lain untuk lanjut: ${NC}\c"
+    read -t 5 -n 1 DASH_CHOICE
+    if [[ "$DASH_CHOICE" == "d" ]]; then
+        python3 "$SCRIPT_DIR/nx_platform/v4/core/dashboard.py"
+    fi
+fi
+
 gum style --foreground 204 --border normal --border-foreground 240 --padding "0 2" "⏳ All targets dispatched. Waiting for background tasks to complete..."
 while [[ $(jobs -p | wc -l) -gt 0 ]]; do
     if ! wait -n 2>/dev/null; then

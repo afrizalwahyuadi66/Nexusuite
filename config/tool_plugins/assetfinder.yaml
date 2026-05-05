@@ -1,0 +1,6 @@
+name: assetfinder
+tier: low
+timeout_sec: 120
+command_template: assetfinder --subs-only {target}
+description: Find related domains and subdomains
+risk: low

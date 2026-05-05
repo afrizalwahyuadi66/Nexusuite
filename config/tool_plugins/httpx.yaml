@@ -1,4 +1,6 @@
 name: httpx
 tier: low
-timeout_sec: 900
-command_template: httpx -u {target} -title -status-code -silent -o {output}
+timeout_sec: 300
+command_template: httpx -u {target} -silent -status-code -title -tech-detect -follow-redirects -x all
+description: Fast and multi-purpose HTTP toolkit for probing.
+risk: low

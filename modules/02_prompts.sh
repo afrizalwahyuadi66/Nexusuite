@@ -30,7 +30,9 @@ if [[ -n "$RESUME_DIR" ]]; then
     export OUTPUT_BASE="$RESUME_DIR"
     export IS_RESUME=true
 else
-    export OUTPUT_BASE="$NEW_OUTPUT_BASE"
+    # NEW logic: Gunakan folder global 'Result' dan buat subfolder berdasarkan timestamp sesi
+    export SESSION_DIR="$GLOBAL_RESULT_DIR/SESSION_$SESSION_TIMESTAMP"
+    export OUTPUT_BASE="$SESSION_DIR"
     export IS_RESUME=false
     mkdir -p "$OUTPUT_BASE"
 fi
@@ -80,8 +82,8 @@ write_mode_marker() {
     fi
 }
 
-if [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
-    gum style --foreground 240 "AI Orchestrator aktif: default No Proxy."
+if [[ "$AI_AUTONOMOUS_MODE" == "true" || "${USE_V4_ENGINE:-false}" == "true" ]]; then
+    gum style --foreground 240 "V4 Engine / AI Orchestrator aktif: default No Proxy."
 elif [[ "${DRY_RUN:-false}" == "true" ]]; then
     gum style --foreground 240 "DRY-RUN aktif: proxy check dilewati."
 else
@@ -89,8 +91,11 @@ if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-fal
     gum style --foreground 240 "AI Full Control interaktif: silakan pilih proxy sebelum scan dimulai."
 fi
 while true; do
-    PROXY_MODE=$(gum choose --header "Route traffic through Proxy?" "No Proxy" "Manual Input (Multiple comma-separated)" "From File")
-    
+    if [[ "${USE_V4_ENGINE:-false}" == "true" ]]; then
+        PROXY_MODE="No Proxy"
+    else
+        PROXY_MODE=$(gum choose --header "Route traffic through Proxy?" "No Proxy" "Manual Input (Multiple comma-separated)" "From File")
+    fi
     if [[ "$PROXY_MODE" == "No Proxy" ]]; then
         gum style --foreground 240 "Proceeding without proxy."
         break
@@ -185,24 +190,49 @@ done
 fi
 
 if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" || "${AI_ORCHESTRATOR_MODE:-false}" == "1" ]]; then
-    if [[ "${AI_ENABLE_DORKING:-true}" == "true" || "${AI_ENABLE_DORKING:-true}" == "1" ]]; then
-        if [[ "$USE_PROXY" == "true" ]]; then
-            DORK_PROXY_CHOICE=$(gum choose --header "Gunakan proxy untuk proses Dorking AI?" \
-                "Tidak (Recommended)" \
-                "Ya, gunakan proxy yang sama")
-            if [[ "$DORK_PROXY_CHOICE" == "Ya, gunakan proxy yang sama" ]]; then
-                export AI_DORK_USE_PROXY="true"
-                gum style --foreground 214 "Dorking AI akan berjalan melalui proxy aktif."
+    if [[ "${USE_V4_ENGINE:-false}" == "true" ]]; then
+        export AI_ENABLE_DORKING="false"
+        export AI_DORK_USE_PROXY="false"
+    else
+        # Konfigurasi Dorking AI
+        gum style --margin "1 0" --foreground 212 "## 🔍 AI Dorking Configuration"
+        echo -e "Benefit: Menemukan endpoint tersembunyi, file sensitif, dan admin panel via Search Engine."
+        echo -e "Risiko : Aktivitas dorking yang agresif dapat menyebabkan IP/Proxy terblokir (Error 403)."
+        
+        DORK_ENABLE_CHOICE=$(gum choose --header "Aktifkan AI Dorking?" "Enabled (Recommended)" "Disabled")
+        if [[ "$DORK_ENABLE_CHOICE" == "Enabled (Recommended)" ]]; then
+            export AI_ENABLE_DORKING="true"
+            
+            if [[ "$USE_PROXY" == "true" ]]; then
+                DORK_PROXY_CHOICE=$(gum choose --header "Gunakan proxy untuk proses Dorking AI?" \
+                    "No Proxy (Direct - Faster, but risk IP ban)" \
+                    "Use Active Proxy Pool (Safer, but slower)")
+                if [[ "$DORK_PROXY_CHOICE" == "Use Active Proxy Pool (Safer, but slower)" ]]; then
+                    export AI_DORK_USE_PROXY="true"
+                    gum style --foreground 214 "Dorking AI akan berjalan melalui proxy pool."
+                else
+                    export AI_DORK_USE_PROXY="false"
+                    gum style --foreground 240 "Dorking AI akan berjalan direct (tanpa proxy)."
+                fi
             else
                 export AI_DORK_USE_PROXY="false"
-                gum style --foreground 240 "Dorking AI akan berjalan direct (tanpa proxy)."
+                gum style --foreground 240 "Dorking AI tanpa proxy (No Proxy mode aktif)."
             fi
+
+            DORK_INTENSITY=$(gum choose --header "Intensitas Dorking (Delay Strategy):" \
+                "Safe (Delay 5-15s, lower 403 risk)" \
+                "Normal (Delay 2-10s)" \
+                "Aggressive (Delay 1-3s, high 403 risk)")
+            case "$DORK_INTENSITY" in
+                "Safe") export AI_DORK_DELAY_MIN=5; export AI_DORK_DELAY_MAX=15 ;;
+                "Normal") export AI_DORK_DELAY_MIN=2; export AI_DORK_DELAY_MAX=10 ;;
+                "Aggressive") export AI_DORK_DELAY_MIN=1; export AI_DORK_DELAY_MAX=3 ;;
+            esac
         else
+            export AI_ENABLE_DORKING="false"
             export AI_DORK_USE_PROXY="false"
-            gum style --foreground 240 "Dorking AI tanpa proxy karena mode scan saat ini No Proxy."
+            gum style --foreground 240 "AI Dorking dimatikan."
         fi
-    else
-        export AI_DORK_USE_PROXY="false"
     fi
 fi
 
@@ -266,6 +296,54 @@ else
         WORKFLOW="Standard (Recommended)"
         gum style --foreground 240 "DRY-RUN aktif: mode target disederhanakan ke Single Domain."
     else
+        # --- v4.1 Unified AI Control Menu ---
+        # Skip if already set in nexusuite.sh (interactive boot)
+        if [[ -z "${AI_AGENT_MODE:-}" || -z "${AI_ORCHESTRATOR_MODE:-}" ]]; then
+            CONTROL_MODE=$(gum choose \
+                --header "Select Operation Mode (AI Control Level):" --cursor "→ " \
+                "Manual Mode (You lead, AI consults)" \
+                "AI Orchestrator (AI leads total mission)" \
+                "AI Agent Configuration (Brain settings)")
+
+            if [[ "$CONTROL_MODE" == "AI Agent Configuration (Brain settings)" ]]; then
+                # Pilih Tipe Otak AI
+                AI_BRAIN_CHOICE=$(gum choose --header "Select AI Brain Strategy:" \
+                    "NX-ADVANCED (Iterative reasoning, aggressive tool dispatch)" \
+                    "HYBRID (AI decides targets, Shell executes tools)" \
+                    "TRUE AI (Deep observation of every output line)" \
+                    "RAG-BASED (Match findings with Exploit-DB knowledge)")
+                
+                case "$AI_BRAIN_CHOICE" in
+                    "NX-ADVANCED") export AI_AGENT_MODE="nx_advanced" ;;
+                    "HYBRID") export AI_AGENT_MODE="hybrid" ;;
+                    "TRUE AI") export AI_AGENT_MODE="true_ai" ;;
+                    "RAG-BASED") export AI_AGENT_MODE="rag_based" ;;
+                esac
+                gum style --foreground 46 "AI Brain set to: $AI_AGENT_MODE"
+                
+                # Setelah setting otak, kembali pilih mode operasi
+                CONTROL_MODE=$(gum choose \
+                    --header "Now select Operation Mode:" --cursor "→ " \
+                    "Manual Mode (You lead, AI consults)" \
+                    "AI Orchestrator (AI leads total mission)")
+            fi
+
+            if [[ "$CONTROL_MODE" == "AI Orchestrator (AI leads total mission)" ]]; then
+                export AI_ORCHESTRATOR_MODE="true"
+                export AI_AGENT_MODE="${AI_AGENT_MODE:-nx_advanced}"
+                gum style --foreground 212 "AI Orchestrator Mode ACTIVE with Brain: $AI_AGENT_MODE"
+            else
+                export AI_ORCHESTRATOR_MODE="false"
+                gum style --foreground 240 "Manual Mode ACTIVE. You are in command."
+            fi
+        else
+            # Tampilkan ringkasan mode yang sudah terpilih dari nexusuite.sh
+            _status_color=240
+            [[ "$AI_ORCHESTRATOR_MODE" == "true" ]] && _status_color=212
+            gum style --foreground "$_status_color" "Current Mode: $( [[ "$AI_ORCHESTRATOR_MODE" == "true" ]] && echo "Autonomous" || echo "Manual" ) | Brain: ${AI_AGENT_MODE:-nx_advanced}"
+        fi
+
+        # Lanjut ke pemilihan target seperti biasa
         MODE=$(gum choose \
             --header "Select target mode:" --cursor "→ " \
             "Single Domain" \
@@ -278,7 +356,11 @@ else
     "Single Domain")
         DOMAIN=$(gum input --placeholder "example.com" --prompt "Enter domain: ")
         echo "$DOMAIN" > "$TARGETS_FILE"
-        WORKFLOW=$(gum choose --header "Select workflow:" "Standard (Recommended)" "Custom (Choose tools manually)")
+        if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" ]]; then
+            WORKFLOW="Standard (Recommended)"
+        else
+            WORKFLOW=$(gum choose --header "Select workflow:" "Standard (Recommended)" "Custom (Choose tools manually)")
+        fi
         ;;
     "Massive Scan from File")
         FILE=$(gum file --file --height 10 --header "Select file with domain list:")
@@ -288,7 +370,15 @@ else
         fi
         
         gum spin --spinner dot --title "Probing active targets from file (httpx)..." -- bash -c "
-            timeout 300 httpx -l '$FILE' -silent -o '$TMP_ENUM_DIR/alive_massive.txt' 2>/dev/null || true
+            timeout 300 httpx -l '$FILE' -silent -o '$TMP_ENUM_DIR/alive_massive_raw.txt' 2>/dev/null || true
+            if [[ -s '$TMP_ENUM_DIR/alive_massive_raw.txt' ]]; then
+                sort -r '$TMP_ENUM_DIR/alive_massive_raw.txt' | awk '{
+                    raw=$0;
+                    u=$1;
+                    sub(/^https?:\/\//, "", u);
+                    if (!seen[u]++) print raw;
+                }' > '$TMP_ENUM_DIR/alive_massive.txt'
+            fi
         "
         if [[ ! -s "$TMP_ENUM_DIR/alive_massive.txt" ]]; then
             gum log --level error "No active targets found in the file."
@@ -297,7 +387,11 @@ else
         
         cp "$TMP_ENUM_DIR/alive_massive.txt" "$TARGETS_FILE"
         rm -f "$TMP_ENUM_DIR/alive_massive.txt"
-        WORKFLOW=$(gum choose --header "Select workflow:" "Standard (Recommended)" "Custom (Choose tools manually)")
+        if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" ]]; then
+            WORKFLOW="Standard (Recommended)"
+        else
+            WORKFLOW=$(gum choose --header "Select workflow:" "Standard (Recommended)" "Custom (Choose tools manually)")
+        fi
         ;;
     "Enumerate & Choose Subdomains")
         DOMAIN=$(gum input --placeholder "example.com" --prompt "Domain to enumerate: ")
@@ -317,7 +411,15 @@ else
         
         gum spin --spinner dot --title "Probing active subdomains (httpx)..." -- bash -c "
             cd '$TMP_ENUM_DIR' || exit 1
-            timeout 300 httpx -l all_subs.txt -silent -o alive_subs.txt 2>/dev/null || true
+            timeout 300 httpx -l all_subs.txt -silent -o alive_subs_raw.txt 2>/dev/null || true
+            if [[ -s alive_subs_raw.txt ]]; then
+                sort -r alive_subs_raw.txt | awk '{
+                    raw=$0;
+                    u=$1;
+                    sub(/^https?:\/\//, "", u);
+                    if (!seen[u]++) print raw;
+                }' > alive_subs.txt
+            fi
         "
         if [[ ! -s "$TMP_ENUM_DIR/alive_subs.txt" ]]; then
             gum log --level error "No active subdomains found."
@@ -328,7 +430,11 @@ else
         [[ -z "$SELECTED" ]] && { gum log --level error "Nothing selected."; exit 1; }
         echo "$SELECTED" > "$TARGETS_FILE"
         rm -f "$TMP_ENUM_DIR"/*.txt
-        WORKFLOW=$(gum choose --header "Select workflow:" "Standard (Recommended)" "Custom (Choose tools manually)")
+        if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" ]]; then
+            WORKFLOW="Standard (Recommended)"
+        else
+            WORKFLOW=$(gum choose --header "Select workflow:" "Standard (Recommended)" "Custom (Choose tools manually)")
+        fi
         ;;
     "Dorking to Target (AI/Manual)")
         DORK_SRC=$(gum choose --header "Pilih sumber Dorking:" "Input Query Manual" "Dari file dorking.txt")
@@ -418,7 +524,15 @@ PY
         awk -F/ '{print $3}' "$TMP_ENUM_DIR/dork_urls.txt" | sed 's/:.*//' | sort -u > "$TMP_ENUM_DIR/dork_domains.txt"
 
         gum spin --spinner dot --title "Memeriksa target yang hidup (httpx)..." -- bash -c "
-            timeout 120 httpx -l '$TMP_ENUM_DIR/dork_domains.txt' -silent -o '$TMP_ENUM_DIR/alive_dork.txt' 2>/dev/null || true
+            timeout 120 httpx -l '$TMP_ENUM_DIR/dork_domains.txt' -silent -o '$TMP_ENUM_DIR/alive_dork_raw.txt' 2>/dev/null || true
+            if [[ -s '$TMP_ENUM_DIR/alive_dork_raw.txt' ]]; then
+                sort -r '$TMP_ENUM_DIR/alive_dork_raw.txt' | awk '{
+                    raw=$0;
+                    u=$1;
+                    sub(/^https?:\/\//, "", u);
+                    if (!seen[u]++) print raw;
+                }' > '$TMP_ENUM_DIR/alive_dork.txt'
+            fi
         "
 
         if [[ ! -s "$TMP_ENUM_DIR/alive_dork.txt" ]]; then
@@ -430,16 +544,24 @@ PY
         [[ -z "$SELECTED" ]] && { gum log --level error "Tidak ada target yang dipilih."; exit 1; }
         
         echo "$SELECTED" > "$TARGETS_FILE"
-        WORKFLOW=$(gum choose --header "Select workflow:" "Standard (Recommended)" "Custom (Choose tools manually)")
+        if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" ]]; then
+            WORKFLOW="Standard (Recommended)"
+        else
+            WORKFLOW=$(gum choose --header "Select workflow:" "Standard (Recommended)" "Custom (Choose tools manually)")
+        fi
         ;;
     "Full Automation (Single Domain → All Subdomains)")
         FULL_AUTO_MODE=true
         DOMAIN=$(gum input --placeholder "example.com" --prompt "Main domain: ")
         
         # UI Upgrade: Tambahkan opsi intensitas discovery
-        DISCOVERY_MODE=$(gum choose --header "Select Discovery Intensity:" \
-            "Fast (subfinder + crt.sh only)" \
-            "Deep (subfinder + crt.sh + bruteforce + permutation)")
+        if [[ "${USE_V4_ENGINE:-false}" == "true" ]]; then
+            DISCOVERY_MODE="Fast (subfinder + crt.sh only)"
+        else
+            DISCOVERY_MODE=$(gum choose --header "Select Discovery Intensity:" \
+                "Fast (subfinder + crt.sh only)" \
+                "Deep (subfinder + crt.sh + bruteforce + permutation)")
+        fi
             
         gum spin --spinner dot --title "Enumerating subdomains for $DOMAIN..." -- bash -c "
             cd '$TMP_ENUM_DIR' || exit 1
@@ -468,18 +590,34 @@ PY
         cp "$TMP_ENUM_DIR/all_subs.txt" "$OUTPUT_BASE/all_subdomains.txt"
         
         # Opsi Filtering Port sebelum Httpx
-        PORT_MODE=$(gum choose --header "Select Port Scanning Scope for HTTPx:" \
-            "Standard (80, 443)" \
-            "Large (80, 443, 8080, 8443, 3000, 8000)")
+        if [[ "${USE_V4_ENGINE:-false}" == "true" ]]; then
+            PORT_MODE="Single Domain Only (No Ports)"
+        else
+            PORT_MODE=$(gum choose --header "Select Port Scanning Scope for HTTPx:" \
+                "Standard (80, 443)" \
+                "Large (80, 443, 8080, 8443, 3000, 8000)" \
+                "Single Domain Only (No Ports)")
+        fi
             
         httpx_ports="-p 80,443"
         if [[ "$PORT_MODE" == "Large"* ]]; then
             httpx_ports="-p 80,443,8080,8443,3000,8000"
+        elif [[ "$PORT_MODE" == "Single Domain"* ]]; then
+            httpx_ports="-no-fallback -vhost"
         fi
 
-        gum spin --spinner dot --title "Probing alive hosts ($PORT_MODE)..." -- bash -c "
+        gum spin --spinner dot --title "Probing active subdomains (httpx)..." -- bash -c "
             cd '$TMP_ENUM_DIR' || exit 1
-            timeout 300 httpx -l all_subs.txt $httpx_ports -silent -o alive_subs.txt 2>/dev/null || true
+            timeout 300 httpx -l all_subs.txt $httpx_ports -silent -o alive_subs_raw.txt 2>/dev/null || true
+            if [[ -s alive_subs_raw.txt ]]; then
+                # Deduplikasi agar domain unik (tanpa menghiraukan protocol dan string lainnya spt [vhost] dll)
+                sort -r alive_subs_raw.txt | awk '{
+                    raw=$0;
+                    u=$1;
+                    sub(/^https?:\/\//, "", u);
+                    if (!seen[u]++) print raw;
+                }' > alive_subs.txt
+            fi
         "
         
         if [[ ! -s "$TMP_ENUM_DIR/alive_subs.txt" ]]; then
@@ -503,9 +641,13 @@ PY
         rm -f "$TMP_ENUM_DIR"/*.txt
 
         # MODIFIKASI 2: Tambahkan pilihan workflow pada Full Automation
-        WORKFLOW=$(gum choose --header "Select workflow for full automation:" \
-            "Standard (Recommended)" \
-            "Custom (Choose tools manually)")
+        if [[ "${AI_ORCHESTRATOR_MODE:-false}" == "true" ]]; then
+            WORKFLOW="Standard (Recommended)"
+        else
+            WORKFLOW=$(gum choose --header "Select workflow for full automation:" \
+                "Standard (Recommended)" \
+                "Custom (Choose tools manually)")
+        fi
         ;;
 esac
     fi
@@ -529,7 +671,8 @@ if [[ "$IS_RESUME" == "false" && -s "$TARGETS_FILE" ]]; then
     MAIN_TARGET_SAFE=$(echo "$MAIN_TARGET_DOMAIN" | sed 's/[^a-zA-Z0-9.-]/_/g')
     
     # Format akhir: Result/NamaDomain_SCAN_XXXX_XXXX
-    FINAL_OUTPUT_BASE="Result/${MAIN_TARGET_SAFE}_${NEW_OUTPUT_BASE}"
+    # Gunakan SESSION_TIMESTAMP yang sudah didefinisikan di 01_init.sh
+    FINAL_OUTPUT_BASE="Result/${MAIN_TARGET_SAFE}_SCAN_${SESSION_TIMESTAMP}"
     
     mkdir -p "Result"
     if [[ -d "$OUTPUT_BASE" ]]; then
@@ -575,7 +718,7 @@ if [[ "$IS_RESUME" == "true" && -f "$OUTPUT_BASE/config.sh" ]]; then
     gum format -- "Resumed tools: $(echo $SELECTED_TOOLS | sed 's/^/ /')"
     gum format -- "Resumed Nmap Args: $NMAP_ARGS"
     gum format -- "Resumed SQLMap Args: $SQLMAP_ARGS"
-elif [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
+elif [[ "$AI_AUTONOMOUS_MODE" == "true" || "${USE_V4_ENGINE:-false}" == "true" ]]; then
     SELECTED_TOOLS="subfinder httpx nmap gau katana paramspider arjun nuclei dalfox wapiti sqlmap nikto ffuf wafw00f"
     FINAL_TOOLS=""
     for tool in $SELECTED_TOOLS; do
@@ -584,9 +727,17 @@ elif [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
     export SELECTED_TOOLS="$FINAL_TOOLS"
     export NMAP_ARGS="${AI_AUTONOMOUS_NMAP_ARGS:--sV -sC --script=vuln,ssl-enum-ciphers}"
     export SQLMAP_ARGS="${AI_AUTONOMOUS_SQLMAP_ARGS:---random-agent --batch --level=1 --risk=1}"
-    export SCAN_SPEED="${AI_AUTONOMOUS_SCAN_SPEED:-Normal (Balanced)}"
-    export CONCURRENCY="${AI_AUTONOMOUS_CONCURRENCY:-3}"
-    export OUTPUT_MODE="${AI_AUTONOMOUS_OUTPUT_MODE:-Silent (Status only)}"
+    
+    # Use value from V4 Profile if available
+    case "${SCAN_SPEED:-}" in
+        "insane") export SCAN_SPEED="Insane (No Delays)" ;;
+        "polite") export SCAN_SPEED="Stealth (Evade Rate-Limits)" ;;
+        "aggressive") export SCAN_SPEED="Normal (Balanced)" ;;
+        *) export SCAN_SPEED="${AI_AUTONOMOUS_SCAN_SPEED:-Normal (Balanced)}" ;;
+    esac
+    
+    export CONCURRENCY="${AI_AUTONOMOUS_CONCURRENCY:-5}"
+    export OUTPUT_MODE="${AI_AUTONOMOUS_OUTPUT_MODE:-Verbose (Show live logs)}"
     {
         echo "export SELECTED_TOOLS=\"$SELECTED_TOOLS\""
         echo "export NMAP_ARGS=\"$NMAP_ARGS\""
@@ -595,7 +746,12 @@ elif [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
         echo "export OUTPUT_MODE=\"$OUTPUT_MODE\""
         echo "export SCAN_SPEED=\"$SCAN_SPEED\""
     } > "$OUTPUT_BASE/config.sh"
-    gum style --foreground 46 "AI Orchestrator: konfigurasi tools dipilih otomatis."
+    
+    if [[ "${USE_V4_ENGINE:-false}" == "true" ]]; then
+        gum style --foreground 46 "V4 Engine: Konfigurasi otonom diaktifkan (Zero-Prompt)."
+    else
+        gum style --foreground 46 "AI Orchestrator: konfigurasi tools dipilih otomatis."
+    fi
 else
     if [[ "$WORKFLOW" == "Standard"* ]]; then
         SELECTED_TOOLS="subfinder httpx nmap gau katana paramspider arjun nuclei dalfox wapiti sqlmap nikto ffuf wafw00f"
@@ -696,9 +852,13 @@ if declare -F write_state_snapshot >/dev/null 2>&1; then
     write_state_snapshot
 fi
 
-if [[ "$AI_AUTONOMOUS_MODE" == "true" ]]; then
+if [[ "$AI_AUTONOMOUS_MODE" == "true" || "${USE_V4_ENGINE:-false}" == "true" ]]; then
     write_mode_marker "START_MODE" "auto"
-    gum style --foreground 46 "AI Orchestrator: memulai scanning otomatis."
+    if [[ "${USE_V4_ENGINE:-false}" == "true" ]]; then
+        gum style --foreground 46 "V4 Engine: Memulai operasi otonom penuh..."
+    else
+        gum style --foreground 46 "AI Orchestrator: memulai scanning otomatis."
+    fi
 else
     write_mode_marker "START_MODE" "manual_confirm"
     gum confirm "Start scanning with above configuration?" || exit 0

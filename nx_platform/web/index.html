@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexusuite Platform UI</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background:#111; color:#eee; }
+    .card { background:#1d1d1d; border:1px solid #333; border-radius:8px; padding:16px; margin-bottom:16px; }
+    input, button, select { padding:8px; margin:4px 0; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { border-bottom:1px solid #333; padding:8px; text-align:left; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .col { flex:1; min-width:260px; }
+  </style>
+</head>
+<body>
+  <h1>Nexusuite Platform v1</h1>
+  <div class="card">
+    <h3>Submit Scan</h3>
+    <label>Target</label><br>
+    <input id="target" placeholder="example.com" style="width:320px"><br>
+    <label>Plugins</label><br>
+    <div id="plugins"></div>
+    <button onclick="submitScan()">Submit</button>
+    <button onclick="explainPlan()">Dry-Run Explain</button>
+    <br>
+    <label>Replay Failed (Scan ID)</label><br>
+    <input id="replayScanId" placeholder="scan id" style="width:160px">
+    <button onclick="replayFailed()">Replay Failed</button>
+    <div id="submitResult"></div>
+  </div>
+
+  <div class="row">
+    <div class="card col">
+      <h3>Scans</h3>
+      <table id="scansTbl"><thead><tr><th>ID</th><th>Target</th><th>Status</th><th>Updated</th><th>Action</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card col">
+      <h3>Findings</h3>
+      <table id="findTbl"><thead><tr><th>Scan</th><th>Severity</th><th>Confidence</th><th>Title</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Approval Center</h3>
+    <label>Preset</label><br>
+    <button onclick="setApprovalPreset('all')">All</button>
+    <button onclick="setApprovalPreset('high')">Only High-Risk</button>
+    <button onclick="setApprovalPreset('medium_plus')">Medium+</button>
+    <button onclick="setApprovalPreset('nuclei')">Only Nuclei</button>
+    <button onclick="setApprovalPreset('scan_active')">Scan Filter Aktif</button>
+    <br>
+    <label>Search (job/plugin/status)</label><br>
+    <input id="approvalSearch" placeholder="contoh: nuclei atau awaiting" style="width:320px" oninput="renderApprovalsTable()"><br>
+    <label>Filter Scan ID</label><br>
+    <input id="approvalScanIdFilter" placeholder="contoh: 12" style="width:160px" oninput="renderApprovalsTable()"><br>
+    <label>Reason (untuk reject)</label><br>
+    <input id="approvalReason" placeholder="contoh: out of scope" style="width:320px"><br>
+    <button onclick="selectAllVisibleApprovals()">Select All Visible</button>
+    <button onclick="selectByScanId()">Select by Scan ID</button>
+    <button onclick="clearApprovalSelection()">Clear Selection</button>
+    <br>
+    <button onclick="bulkApprove()">Bulk Approve Selected</button>
+    <button onclick="bulkReject()">Bulk Reject Selected</button>
+    <button onclick="bulkApprove(true)">Bulk Approve All Pending</button>
+    <table id="approvalTbl">
+      <thead><tr><th>Select</th><th>Job ID</th><th>Scan</th><th>Plugin</th><th>Tier</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>AI Timeline</h3>
+    <table id="timelineTbl">
+      <thead><tr><th>At</th><th>Scan</th><th>Job</th><th>Event</th><th>Status</th><th>Detail</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    let approvalsCache = [];
+    let scansCache = [];
+    let pluginMap = {};
+    let currentApprovalPreset = 'all';
+    const selectedApprovalSet = new Set();
+
+    async function getJson(url) {
+      const r = await fetch(url);
+      return r.json();
+    }
+
+    async function loadPlugins() {
+      const data = await getJson('/api/plugins');
+      const box = document.getElementById('plugins');
+      box.innerHTML = '';
+      pluginMap = {};
+      for (const p of data.plugins) {
+        const id = `pl_${p.name}`;
+        box.innerHTML += `<label><input type="checkbox" id="${id}" checked> ${p.name}</label><br>`;
+        pluginMap[p.name] = p;
+      }
+    }
+
+    function selectedPlugins() {
+      const out = [];
+      document.querySelectorAll('#plugins input[type=checkbox]').forEach(x => { if (x.checked) out.push(x.id.replace('pl_', '')); });
+      return out;
+    }
+
+    async function submitScan() {
+      const target = document.getElementById('target').value.trim();
+      const plugins = selectedPlugins();
+      const r = await fetch('/api/scans', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ target, plugins, profile: 'platform_v1' })
+      });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data);
+      await refreshAll();
+    }
+
+    async function explainPlan() {
+      const target = document.getElementById('target').value.trim();
+      const r = await fetch('/api/ai/explain', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ target, profile: 'standard' })
+      });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function replayFailed() {
+      const scanId = document.getElementById('replayScanId').value.trim();
+      if (!scanId) return;
+      const r = await fetch(`/api/scans/${scanId}/replay`, { method: 'POST' });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data, null, 2);
+      await refreshAll();
+    }
+
+    async function approveJob(jobId) {
+      const r = await fetch(`/api/jobs/${jobId}/approve`, { method: 'POST' });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data, null, 2);
+      await refreshAll();
+    }
+
+    async function rejectJob(jobId) {
+      const reason = document.getElementById('approvalReason').value.trim();
+      const r = await fetch(`/api/jobs/${jobId}/reject`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ reason })
+      });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data, null, 2);
+      await refreshAll();
+    }
+
+    function selectedApprovalIds() {
+      return Array.from(selectedApprovalSet);
+    }
+
+    function toggleApprovalSelection(jobId, checked) {
+      if (checked) selectedApprovalSet.add(jobId);
+      else selectedApprovalSet.delete(jobId);
+    }
+
+    function currentApprovalFilters() {
+      const query = document.getElementById('approvalSearch').value.trim().toLowerCase();
+      const scanFilter = document.getElementById('approvalScanIdFilter').value.trim();
+      return { query, scanFilter };
+    }
+
+    function pluginTierByName(pluginName) {
+      const p = pluginMap[pluginName] || {};
+      const t = String(p.tier || '').trim().toLowerCase();
+      if (t === 'low' || t === 'medium' || t === 'high') return t;
+      return 'high';
+    }
+
+    function setApprovalPreset(preset) {
+      currentApprovalPreset = preset;
+      renderApprovalsTable();
+    }
+
+    function filterApprovals(items) {
+      const { query, scanFilter } = currentApprovalFilters();
+      return items.filter(j => {
+        if (scanFilter && String(j.scan_id) !== scanFilter) return false;
+        const tier = pluginTierByName(j.plugin_name);
+        if (currentApprovalPreset === 'high' && tier !== 'high') return false;
+        if (currentApprovalPreset === 'medium_plus' && !(tier === 'high' || tier === 'medium')) return false;
+        if (currentApprovalPreset === 'nuclei' && String(j.plugin_name).toLowerCase() !== 'nuclei') return false;
+        if (currentApprovalPreset === 'scan_active' && !scanFilter) return false;
+        if (!query) return true;
+        const hay = `${j.id} ${j.scan_id} ${j.plugin_name} ${tier} ${j.status}`.toLowerCase();
+        return hay.includes(query);
+      });
+    }
+
+    function renderApprovalsTable() {
+      const body = document.querySelector('#approvalTbl tbody');
+      body.innerHTML = '';
+      const items = filterApprovals(approvalsCache).slice(0, 120);
+      for (const j of items) {
+        const checked = selectedApprovalSet.has(j.id) ? 'checked' : '';
+        const tier = pluginTierByName(j.plugin_name);
+        body.innerHTML += `<tr data-job-id="${j.id}" data-scan-id="${j.scan_id}"><td><input class="approvalChk" type="checkbox" value="${j.id}" ${checked} onchange="toggleApprovalSelection(${j.id}, this.checked)"></td><td>${j.id}</td><td>${j.scan_id}</td><td>${j.plugin_name}</td><td>${tier}</td><td>${j.status}</td><td><button onclick="approveJob(${j.id})">Approve</button> <button onclick="rejectJob(${j.id})">Reject</button></td></tr>`;
+      }
+    }
+
+    function visibleApprovalIds() {
+      const out = [];
+      document.querySelectorAll('#approvalTbl tbody tr[data-job-id]').forEach(row => {
+        const id = parseInt(row.getAttribute('data-job-id') || '0', 10);
+        if (id > 0) out.push(id);
+      });
+      return out;
+    }
+
+    function selectAllVisibleApprovals() {
+      for (const id of visibleApprovalIds()) selectedApprovalSet.add(id);
+      renderApprovalsTable();
+    }
+
+    function clearApprovalSelection() {
+      selectedApprovalSet.clear();
+      renderApprovalsTable();
+    }
+
+    function selectByScanId() {
+      const scanFilter = document.getElementById('approvalScanIdFilter').value.trim();
+      if (!scanFilter) return;
+      for (const j of approvalsCache) {
+        if (String(j.scan_id) === scanFilter) selectedApprovalSet.add(j.id);
+      }
+      renderApprovalsTable();
+    }
+
+    async function bulkApproval(action, allPending=false) {
+      const reason = document.getElementById('approvalReason').value.trim();
+      const job_ids = allPending ? [] : selectedApprovalIds();
+      if (!allPending && job_ids.length === 0) {
+        document.getElementById('submitResult').textContent = 'Tidak ada job terpilih.';
+        return;
+      }
+      const r = await fetch('/api/approvals/bulk', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ action, job_ids, reason })
+      });
+      const data = await r.json();
+      document.getElementById('submitResult').textContent = JSON.stringify(data, null, 2);
+      if (!allPending) clearApprovalSelection();
+      await refreshAll();
+    }
+
+    async function bulkApprove(allPending=false) { await bulkApproval('approve', allPending); }
+    async function bulkReject() { await bulkApproval('reject', false); }
+
+    async function refreshScans() {
+      const data = await getJson('/api/scans');
+      scansCache = data.items || [];
+      const body = document.querySelector('#scansTbl tbody');
+      body.innerHTML = '';
+      for (const s of scansCache) {
+        body.innerHTML += `<tr><td>${s.id}</td><td>${s.target}</td><td>${s.status}</td><td>${s.updated_at}</td><td><button onclick="setApprovalScanFilter(${s.id})">Filter Approvals</button></td></tr>`;
+      }
+    }
+
+    function setApprovalScanFilter(scanId) {
+      document.getElementById('approvalScanIdFilter').value = String(scanId);
+      currentApprovalPreset = 'scan_active';
+      renderApprovalsTable();
+    }
+
+    async function refreshFindings() {
+      const data = await getJson('/api/findings');
+      const body = document.querySelector('#findTbl tbody');
+      body.innerHTML = '';
+      for (const f of data.items.slice(0, 40)) {
+        body.innerHTML += `<tr><td>${f.scan_id}</td><td>${f.severity}</td><td>${f.confidence}</td><td>${f.title}</td></tr>`;
+      }
+    }
+
+    async function refreshApprovals() {
+      const data = await getJson('/api/approvals');
+      approvalsCache = data.items || [];
+      // Hapus selection id yang sudah tidak ada pada pending approvals.
+      const validIds = new Set(approvalsCache.map(x => x.id));
+      for (const id of Array.from(selectedApprovalSet)) {
+        if (!validIds.has(id)) selectedApprovalSet.delete(id);
+      }
+      renderApprovalsTable();
+    }
+
+    async function refreshTimeline() {
+      const data = await getJson('/api/timeline');
+      const body = document.querySelector('#timelineTbl tbody');
+      body.innerHTML = '';
+      for (const t of data.items.slice(0, 80)) {
+        body.innerHTML += `<tr><td>${t.created_at}</td><td>${t.scan_id}</td><td>${t.job_id || ''}</td><td>${t.event}</td><td>${t.status}</td><td>${t.detail}</td></tr>`;
+      }
+    }
+
+    async function refreshAll() {
+      await refreshScans();
+      await refreshFindings();
+      await refreshApprovals();
+      await refreshTimeline();
+    }
+
+    loadPlugins().then(refreshAll);
+    setInterval(refreshAll, 5000);
+  </script>
+</body>
+</html>

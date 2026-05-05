@@ -19,6 +19,38 @@ get_domain() { echo "$1" | awk -F'/targets/' '{print $2}' | cut -d'/' -f1; }
     echo "======================================="
 } > "$REPORT_DIR/full_report.txt"
 
+# 0. AI-Verified Advanced Findings (v4.1)
+write_section "AI-VERIFIED ADVANCED FINDINGS (Autonomous Engine)"
+AI_VULNS_FILE="$REPORT_DIR/ai_verified_findings.txt"
+: > "$AI_VULNS_FILE"
+
+# Cek apakah ada temuan di database via audited_findings_all.jsonl yang baru kita update di 05_auditing.sh
+if [[ -f "$OUTPUT_BASE/audited_findings_all.jsonl" ]]; then
+    while read -r line; do
+        if echo "$line" | grep -q '"source":"AI-VERIFIED"'; then
+            v_name=$(echo "$line" | jq -r '.evidence')
+            v_sev=$(echo "$line" | jq -r '.severity')
+            v_repro=$(echo "$line" | jq -r '.repro_command')
+            echo "[$v_sev] $v_name" >> "$AI_VULNS_FILE"
+            echo "      > $v_repro" >> "$AI_VULNS_FILE"
+            echo "" >> "$AI_VULNS_FILE"
+        elif echo "$line" | grep -q '"source":"AI-EXPLOIT"'; then
+            e_name=$(echo "$line" | jq -r '.evidence')
+            e_pay=$(echo "$line" | jq -r '.repro_command')
+            echo "[CRITICAL-EXPLOIT] $e_name" >> "$AI_VULNS_FILE"
+            echo "      > $e_pay" >> "$AI_VULNS_FILE"
+            echo "" >> "$AI_VULNS_FILE"
+        fi
+    done < "$OUTPUT_BASE/audited_findings_all.jsonl"
+fi
+
+if [[ -s "$AI_VULNS_FILE" ]]; then
+    echo "Nexusuite AI Engine has verified $(grep -c '^\[' "$AI_VULNS_FILE") advanced findings!" | tee -a "$REPORT_DIR/full_report.txt"
+    cat "$AI_VULNS_FILE" >> "$REPORT_DIR/full_report.txt"
+else
+    echo "No advanced AI-verified findings in this session." >> "$REPORT_DIR/full_report.txt"
+fi
+
 # 1. Subdomains enumerated
 write_section "ENUMERATED SUBDOMAINS"
 if [[ -f "$OUTPUT_BASE/all_subdomains.txt" ]]; then
